@@ -56,7 +56,7 @@ byte StartOffset[6] = {00, 10, 20, 30, 40, 50};
 
 // --- GLOBALS EXPOSED FOR UI.CPP ---
 bool PunchActive = false; 
-bool CycleFlag;           
+bool AutoCycleEnabled;
 int currentPunchActuatorGlobal = 0;
 unsigned long lastPunchCompleteTime = 0; 
 bool shakeRunning = false; // Legacy fallback
@@ -96,7 +96,7 @@ void setup(void)
     EEPROM.update(11, 3);  
   }
 
-  CycleFlag = EEPROM.read(0);            
+  AutoCycleEnabled = EEPROM.read(0);
   Index = EEPROM.read(1);                
   IntervalSet = _IntervalSet[Index];     
   Interval = 1440 / _IntervalSet[Index]; 
@@ -113,7 +113,7 @@ void setup(void)
   TempAct = GetTemp();
   drawMainScreen(); 
 
-  if (EEPROM.read(5) == 1 && CycleFlag == 1) {
+  if (EEPROM.read(5) == 1 && AutoCycleEnabled == 1) {
     s_PunchReason = "Power";
     SetPunchReps = SetTimeRep_UI; 
     completedCycles = 0;
@@ -144,7 +144,7 @@ void loop()
 
   if (millis() - updateMillis >= 1000) {                          
     updateMillis = millis(); 
-    if (CycleFlag == 1) {                         
+    if (AutoCycleEnabled == 1) {
       Interval -= 0.01666667; 
       if (Interval <= 0.02) {                                          
         s_PunchReason = "Time";                  
@@ -165,12 +165,12 @@ void loop()
 
     if (CurrentPage != 4) { 
       updateTemp();
-      if (CycleFlag == 1 && CurrentPage == 1) { 
+      if (AutoCycleEnabled == 1 && CurrentPage == 1) {
         updateInterval();
       }
     }
 
-    if ((CurrentPage == 2 || CurrentPage == 4 || (CurrentPage == 3 && CycleFlag == 0)) && millis() - InfoAge >= 60000) { 
+    if ((CurrentPage == 2 || CurrentPage == 4 || (CurrentPage == 3 && AutoCycleEnabled == 0)) && millis() - InfoAge >= 60000) {
       CurrentPage = 1;
       drawMainScreen();
     }
@@ -196,7 +196,6 @@ String Uptime() {
 
 void AbortPunch() {
   Serial.println("Reset Punch!");
-  CycleFlag = 0; 
   currentPunchActuatorGlobal = 0;
   completedCycles = SetPunchReps;
   actuators.abortPunch();

@@ -22,6 +22,49 @@ unsigned long lastTouchTime = 0;
 bool touchActive = false;
 unsigned long touchDelay = 200;
 
+struct TouchRect
+{
+  int left;
+  int top;
+  int right;
+  int bottom;
+};
+
+static bool pointInRect(int x, int y, const TouchRect &rect)
+{
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+static bool isPageButtonHit(byte page, Adafruit_GFX_Button &button, int x, int y)
+{
+  return CurrentPage == page && button.contains(x, y);
+}
+
+static bool isPageTouchRect(byte page, int x, int y, const TouchRect &rect)
+{
+  return CurrentPage == page && pointInRect(x, y, rect);
+}
+
+static void drawUiButton(Adafruit_GFX_Button &button, int x, int y,
+                        uint16_t outline, uint16_t fill, uint16_t textColor,
+                        const char *label, uint8_t textSize)
+{
+  button.initButton(&tft, x, y, BUTTON_W, BUTTON_H, outline, fill, textColor, (char *)label, textSize);
+  button.drawButton(true);
+}
+
+static void renderStateButton(Adafruit_GFX_Button &button, int x, int y,
+                              bool active, const char *activeLabel,
+                              const char *inactiveLabel, uint16_t activeFill,
+                              uint16_t activeTextColor, uint16_t inactiveFill,
+                              uint16_t inactiveTextColor)
+{
+  drawUiButton(button, x, y, WHITE,
+               active ? activeFill : inactiveFill,
+               active ? activeTextColor : inactiveTextColor,
+               active ? activeLabel : inactiveLabel, 2);
+}
+
 void initDisplay()
 {
     uint16_t identifier = tft.readID();
@@ -115,24 +158,11 @@ void drawMainScreen()
   tft.println(s_PunchReason);
 
   // BUTTONS
-  // Stop Go
-  if (CycleFlag == 0)
-  {
-    ButtonState.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, BLACK, GREEN, (char *)"Run", 2);
-  }
-  else
-  {
-    ButtonState.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, WHITE, RED, (char *)"Pause", 2);
-  }
-  ButtonState.drawButton(true);
+  renderStateButton(ButtonState, 280, 75, AutoCycleEnabled,
+                    "Pause", "Run", WHITE, RED, BLACK, GREEN);
 
-  // Manual
-  ButtonPunch.initButton(&tft, 280, 135, BUTTON_W, BUTTON_H, WHITE, WHITE, BLUE, (char *)"Cycle", 2);
-  ButtonPunch.drawButton(true);
-
-  // INFO
-  ButtonInfo.initButton(&tft, 280, 195, BUTTON_W, BUTTON_H, WHITE, WHITE, DARKGREY, (char *)"Status", 2);
-  ButtonInfo.drawButton(true);
+  drawUiButton(ButtonPunch, 280, 135, WHITE, WHITE, BLUE, "Cycle", 2);
+  drawUiButton(ButtonInfo, 280, 195, WHITE, WHITE, DARKGREY, "Status", 2);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -158,29 +188,14 @@ void drawManualScreen()
   tft.setTextSize(3);
   updateTemp();
 
-  if (CycleFlag == 0)
-  {
-    // Cycle State
-    ButtonCycle.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, BLACK, GREEN, (char *)"Run", 2);
-    ButtonCycle.drawButton(true);
-  }
-  else
-  {
-    ButtonCycle.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, WHITE, RED, (char *)"Cycling", 2);
-    ButtonCycle.drawButton(true);
-  }
+  renderStateButton(ButtonCycle, 280, 75, PunchActive,
+                    "Stop", "Run", WHITE, RED, BLACK, GREEN);
 
-  // Update button label
   static char labelBuffer[5];
   sprintf(labelBuffer, "%d", CycleValue);
 
-  // Cycle Count
-  ButtonCount.initButton(&tft, 280, 135, BUTTON_W, BUTTON_H, WHITE, WHITE, BLUE, (char *)labelBuffer, 2);
-  ButtonCount.drawButton(true);
-
-  // Shake
-  ButtonShake.initButton(&tft, 280, 195, BUTTON_W, BUTTON_H, WHITE, BLACK, ORANGE, (char *)"Shake", 2);
-  ButtonShake.drawButton(true);
+  drawUiButton(ButtonCount, 280, 135, WHITE, WHITE, BLUE, labelBuffer, 2);
+  drawUiButton(ButtonShake, 280, 195, WHITE, BLACK, ORANGE, "Shake", 2);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -257,12 +272,8 @@ void drawInfoScreen()
   tft.println("+");
 
   // BUTTONS
-  // Reset
-  ButtonReset.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, WHITE, RED, (char *)"Reset", 2);
-  ButtonReset.drawButton(true);
-  // Manual
-  ButtonConfig.initButton(&tft, 280, 135, BUTTON_W, BUTTON_H, WHITE, WHITE, BLUE, (char *)"Config", 2);
-  ButtonConfig.drawButton(true);
+  drawUiButton(ButtonReset, 280, 75, WHITE, WHITE, RED, "Reset", 2);
+  drawUiButton(ButtonConfig, 280, 135, WHITE, WHITE, BLUE, "Config", 2);
   InfoAge = millis();
 }
 /*END----------------------------------------------------------------------------------------------*/
@@ -359,7 +370,7 @@ void ReadScreen()
 /* Screen Handlers*/
 void handleTempAdjust()
 {
-  if (px >= 60 && px < 150 && py >= 120 && py <= 240 && CurrentPage == 1)
+  if (isPageTouchRect(1, px, py, {60, 120, 150, 240}))
   {
     if (py <= 200 && TempSetPoint < 120)
     {
@@ -380,7 +391,7 @@ void handleTempAdjust()
 
 void handleIntervalAdjust()
 {
-  if (px >= 150 && px <= 220 && py >= 120 && py <= 240 && CurrentPage == 1)
+  if (isPageTouchRect(1, px, py, {150, 120, 220, 240}))
   {
     if (py <= 200 && Index < 7)
     {
@@ -401,33 +412,36 @@ void handleIntervalAdjust()
 
 void handleRunStop()
 {
-  if (CurrentPage == 1 && px >= 235 && px <= 305 && py >= 50 && py <= 100)
+  if (isPageButtonHit(1, ButtonState, px, py))
   {
-    CycleFlag = !CycleFlag;
-    EEPROM.update(0, CycleFlag);
-    if (CycleFlag == 0)
+    AutoCycleEnabled = !AutoCycleEnabled;
+    EEPROM.update(0, AutoCycleEnabled);
+    if (AutoCycleEnabled == 0)
     {
-      ButtonState.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, BLACK, GREEN, (char *)"Run", 2);
       AbortPunch();
     }
-    else
-    {
-      ButtonState.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, WHITE, RED, (char *)"Pause", 2);
-    }
-    ButtonState.drawButton(true);
+    renderStateButton(ButtonState, 280, 75, AutoCycleEnabled,
+                      "Pause", "Run", WHITE, RED, BLACK, GREEN);
   }
 }
 /*END----------------------------------------------------------------------------------------------*/
 
 void handleManualCycle()
 {
-  if (px >= 235 && px <= 305 && py >= 110 && py <= 160)
+  Adafruit_GFX_Button *button = nullptr;
+  if (CurrentPage == 1)
+    button = &ButtonPunch;
+  else if (CurrentPage == 2)
+    button = &ButtonConfig;
+  else if (CurrentPage == 3)
+    button = &ButtonCount;
+
+  if (button != nullptr && button->contains(px, py))
   {
     switch (CurrentPage)
     {
     case 1:
       CurrentPage = 3;
-      CycleFlag = 0;
       drawManualScreen();
       break;
     case 2:
@@ -439,8 +453,7 @@ void handleManualCycle()
       CycleValue = cycleValues[CycleIndex];
       static char labelBuffer[5];
       sprintf(labelBuffer, "%d", CycleValue);
-      ButtonCount.initButton(&tft, 280, 135, BUTTON_W, BUTTON_H, WHITE, WHITE, BLUE, labelBuffer, 2);
-      ButtonCount.drawButton(true);
+      drawUiButton(ButtonCount, 280, 135, WHITE, WHITE, BLUE, labelBuffer, 2);
       break;
     }
   }
@@ -449,7 +462,7 @@ void handleManualCycle()
 
 void handleInfoPage()
 {
-  if (CurrentPage == 1 && px >= 250 && px <= 320 && py >= 180 && py <= 240)
+  if (isPageButtonHit(1, ButtonInfo, px, py))
   {
     CurrentPage = 2;
     drawInfoScreen();
@@ -461,24 +474,25 @@ void handleManualCycleActions()
 {
   if (CurrentPage == 3)
   {
-    if (px >= 235 && px <= 320 && py >= 50 && py <= 100)
+    if (ButtonCycle.contains(px, py))
     {
-      CycleFlag = !CycleFlag;
-      if (CycleFlag == 0 && !PunchActive)
+      if (!PunchActive)
       {
-        ButtonCycle.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, BLACK, GREEN, (char *)"Run", 2);
-        ButtonCycle.drawButton(true);
-        AbortPunch();
-      }
-      else
-      {
+        renderStateButton(ButtonCycle, 280, 75, true,
+                          "Stop", "Run", WHITE, RED, BLACK, GREEN);
         s_PunchReason = "Manual";
         SetPunchReps = CycleValue;
         completedCycles = 0;
         StartPunch();
       }
+      else
+      {
+        AbortPunch();
+        renderStateButton(ButtonCycle, 280, 75, false,
+                          "Stop", "Run", WHITE, RED, BLACK, GREEN);
+      }
     }
-    if (px >= 235 && px <= 320 && py >= 180 && py <= 240 && !PunchActive)
+    if (ButtonShake.contains(px, py) && !PunchActive)
     {
       StartShake();
     }
@@ -488,7 +502,7 @@ void handleManualCycleActions()
 
 void handleStatusReset()
 {
-  if (px >= 235 && px <= 305 && py >= 50 && py <= 100 && CurrentPage == 2)
+  if (isPageButtonHit(2, ButtonReset, px, py))
   {
     TMax = 0;
     TMin = 99;
@@ -503,7 +517,7 @@ void handleStatusReset()
 
 void handleOffsetAdjust()
 {
-  if (px >= 100 && px < 220 && py >= 150 && py <= 240 && CurrentPage == 2)
+  if (isPageTouchRect(2, px, py, {100, 150, 220, 240}))
   {
     if (px < 150 && _days > 0)
     {
@@ -529,7 +543,7 @@ void handleConfigAdjustments()
     return;
 
   // Stroke Down Time
-  if (px >= 20 && px <= 180 && py >= 30 && py <= 160)
+  if (pointInRect(px, py, {20, 30, 180, 160}))
   {
     if (py < 100 && StrokeDownTime < 90)
       StrokeDownTime += 5;
@@ -544,7 +558,7 @@ void handleConfigAdjustments()
   /*END----------------------------------------------------------------------------------------------*/
 
   // Time Reps
-  if (px >= 180 && px <= 280 && py >= 30 && py <= 160)
+  if (pointInRect(px, py, {180, 30, 280, 160}))
   {
     if (py < 100 && SetTimeRep_UI < 10)
       SetTimeRep_UI++;
@@ -559,7 +573,7 @@ void handleConfigAdjustments()
   /*END----------------------------------------------------------------------------------------------*/
 
   // Temp Reps
-  if (px >= 180 && px <= 280 && py >= 170 && py <= 235)
+  if (pointInRect(px, py, {180, 170, 280, 235}))
   {
     if (py < 200 && SetTempRep_UI < 10)
       SetTempRep_UI++;
@@ -574,7 +588,7 @@ void handleConfigAdjustments()
   /*END----------------------------------------------------------------------------------------------*/
 
   // Temp Dwell
-  if (px >= 20 && px <= 180 && py > 170 && py <= 235)
+  if (pointInRect(px, py, {20, 170, 180, 235}))
   {
     if (py < 200 && SetTempDwellTime < 240)
       SetTempDwellTime += 5;
@@ -623,8 +637,6 @@ void updateTemp()
       tft.print(" of ");
       tft.fillRect(160, 140, 20, 20, BLACK);
       tft.print(SetPunchReps);
-      ButtonCycle.initButton(&tft, 280, 75, BUTTON_W, BUTTON_H, WHITE, WHITE, RED, (char *)"Cycling", 1);
-      ButtonCycle.drawButton(true);
     }
     else
     {

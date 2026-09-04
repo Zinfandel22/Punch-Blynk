@@ -12,7 +12,7 @@ extern int TempSetPoint, Cycles, SetTempDwellTime, TempDwellTime, completedCycle
 extern byte Index, IntervalSet, _days, StrokeDownTime;
 extern byte SetTimeRep_UI, SetTempRep_UI, SetPunchReps;
 extern String s_UpTime, s_PunchReason, s_OldPunchReason;
-extern bool CycleFlag, PunchActive;
+extern bool AutoCycleEnabled, PunchActive;
 extern int cycleValues[];
 extern int CycleIndex, CycleValue;
 extern byte _IntervalSet[];

@@ -107,13 +107,13 @@ Objective: Validate that critical configuration values (temperatures, stroke tim
 
 Steps:
 
-Set specific non-default values via the UI: TempSetPoint = 85°F, StrokeDownTime = 25s, SetTimeRep_UI = 3, CycleFlag = 1 (Running).
+Set specific non-default values via the UI: TempSetPoint = 85°F, StrokeDownTime = 25s, SetTimeRep_UI = 3, AutoCycleEnabled = 1 (Running).
 
 Disconnect main power to the board completely for 30 seconds.
 
 Re-apply power and observe boot values on the UI and Serial monitor.
 
-Expected Result: EEPROM restores CycleFlag, TempSetPoint, StrokeDownTime, and accumulated Cycles accurately without reverting to magic-byte fallback defaults.
+Expected Result: EEPROM restores AutoCycleEnabled, TempSetPoint, StrokeDownTime, and accumulated Cycles accurately without reverting to magic-byte fallback defaults.
 
 Test Case 5.2: Mid-Cycle Power Outage Recovery ("Power Failure Punch")
 
@@ -121,7 +121,7 @@ Objective: Validate that if power fails while the unit is active and armed, it a
 
 Steps:
 
-Set system to Run mode (CycleFlag = 1).
+Set system to Run mode (AutoCycleEnabled = 1).
 
 Allow system uptime to exceed 1 hour (or mock EEPROM.read(5) == 1).
 
@@ -129,7 +129,7 @@ Cut main power abruptly mid-cycle while an actuator is down.
 
 Restore power to the Arduino Mega.
 
-Expected Result: During setup(), the system detects EEPROM.read(5) == 1 and CycleFlag == 1. It logs "Power fail so punch once now", sets s_PunchReason = "Power", and immediately executes a single recovery punch sequence.
+Expected Result: During setup(), the system detects EEPROM.read(5) == 1 and AutoCycleEnabled == 1. It logs "Power fail so punch once now", sets s_PunchReason = "Power", and immediately executes a single recovery punch sequence.
 
 Test Case 5.3: Mandatory Shake on Partial Cycle Abort or Power Reset
 
