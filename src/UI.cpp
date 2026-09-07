@@ -404,7 +404,7 @@ void handleIntervalAdjust()
     }
     EEPROM.update(1, Index);
     IntervalSet = _IntervalSet[Index];
-    Interval = 1440 / IntervalSet + _days * 10;
+    Interval = 1440 / IntervalSet + _days * 5;
     UpdateSetInterval();
     updateInterval();
   }
@@ -524,15 +524,15 @@ void handleStatusReset()
 
 void handleOffsetAdjust()
 {
-  if (isPageTouchRect(2, px, py, {100, 150, 220, 240}))
+  if (isPageTouchRect(2, px, py, {100, 150, 270, 240}))
   {
     if (px < 150 && _days > 0)
     {
-      _days--;
+      _days = max((byte)0, (byte)(_days - 1));
     }
-    else if (px >= 150 && _days < 5)
+    else if (px >= 150 && _days < 11)
     {
-      _days++;
+      _days = min((byte)11, (byte)(_days + 1));
     }
     EEPROM.update(11, _days);
     tft.fillRect(155, 197, 35, 30, BLACK);

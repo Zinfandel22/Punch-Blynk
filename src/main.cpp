@@ -59,7 +59,7 @@ int MaxShakeCycles = 4;
 
 // --- LOOKUP TABLES ---
 byte _IntervalSet[8] = {1, 2, 3, 4, 6, 8, 12, 24};
-byte StartOffset[6] = {00, 10, 20, 30, 40, 50};
+byte StartOffset[12] = {00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55};
 
 /* --------------------------------------------------------------------------------------------------------*/
 void setup(void)
@@ -187,7 +187,7 @@ void loop()
       if (s_OldPunchReason != s_PunchReason)
       {
         s_OldPunchReason = s_PunchReason;
-        tft.fillRect(235, 222, 75, 15, BLACK);
+        tft.fillRect(235, 222, 85, 15, BLACK);
         tft.setTextColor(RED);
         tft.setTextSize(2);
         tft.setCursor(240, 222);
