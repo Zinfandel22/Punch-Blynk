@@ -1,4 +1,5 @@
 #include "UI.h"
+#include "Actuators.h"
 
 // --- 1. GLOBAL HARDWARE OBJECTS ---
 MCUFRIEND_kbv tft;
@@ -20,7 +21,9 @@ Adafruit_GFX_Button ButtonShake;
 int px, py, pz;
 unsigned long lastTouchTime = 0;
 bool touchActive = false;
-unsigned long touchDelay = 200;
+unsigned long touchDelay = 500;
+static float lastStatusTMin = -9999.0f;
+static float lastStatusTMax = -9999.0f;
 
 struct TouchRect
 {
@@ -150,11 +153,11 @@ void drawMainScreen()
   updateInterval();
   UpdateSetInterval();
   tft.setTextSize(2);
-  tft.setTextColor(CYAN);
+  tft.setTextColor(GREENYELLOW);
   tft.setCursor(0, 222);
-  tft.println("Last Punch Reason:>");
+  tft.println("Last Punch Reason: ");
   tft.setTextColor(RED);
-  tft.setCursor(240, 222);
+  tft.setCursor(245, 222);
   tft.println(s_PunchReason);
 
   // BUTTONS
@@ -162,7 +165,8 @@ void drawMainScreen()
                     "Pause", "Run", WHITE, RED, BLACK, GREEN);
 
   drawUiButton(ButtonPunch, 280, 135, WHITE, WHITE, BLUE, "Cycle", 2);
-  drawUiButton(ButtonInfo, 280, 195, WHITE, WHITE, DARKGREY, "Status", 2);
+  drawUiButton(ButtonInfo, 280, 195, WHITE, WHITE, BLUE, "Status", 2);
+  updateActuatorState();
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -188,14 +192,14 @@ void drawManualScreen()
   tft.setTextSize(3);
   updateTemp();
 
-  renderStateButton(ButtonCycle, 280, 75, PunchActive,
+  renderStateButton(ButtonCycle, 280, 75, ManualCycleActive,
                     "Stop", "Run", WHITE, RED, BLACK, GREEN);
 
   static char labelBuffer[5];
   sprintf(labelBuffer, "%d", CycleValue);
 
   drawUiButton(ButtonCount, 280, 135, WHITE, WHITE, BLUE, labelBuffer, 2);
-  drawUiButton(ButtonShake, 280, 195, WHITE, BLACK, ORANGE, "Shake", 2);
+  drawUiButton(ButtonShake, 280, 195, WHITE, BLACK, PURPLE, "Shake", 2);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -233,10 +237,7 @@ void drawInfoScreen()
   tft.println("Uptime");
 
   tft.setCursor(125, 180);
-  tft.println("Start Delay");
-
-  tft.setCursor(230, 205);
-  tft.println("mins");
+  tft.println("Start Delay (m)");
 
   // VALUES
   tft.setTextColor(WHITE);
@@ -257,7 +258,7 @@ void drawInfoScreen()
   tft.setCursor(125, 130);
   tft.println(s_UpTime);
 
-  tft.setCursor(150, 200);
+  tft.setCursor(155, 200);
   tft.println(StartOffset[_days]);
 
   // Reduce Interval Down
@@ -287,7 +288,7 @@ void drawConfigScreen()
   tft.setTextSize(3);
   tft.setTextColor(RED);
   tft.setCursor(10, 10);
-  tft.println("Plunge Settings");
+  tft.println("Plunge Config");
   // DIVIDERS LINES
   tft.drawLine(0, 42, 320, 42, GREEN); // Title
 
@@ -476,17 +477,23 @@ void handleManualCycleActions()
   {
     if (ButtonCycle.contains(px, py))
     {
-      if (!PunchActive)
+      if (!ManualCycleActive)
       {
+        if (PunchActive)
+          return;
+
+        ManualCycleActive = true;
         renderStateButton(ButtonCycle, 280, 75, true,
                           "Stop", "Run", WHITE, RED, BLACK, GREEN);
         s_PunchReason = "Manual";
         SetPunchReps = CycleValue;
-        completedCycles = 0;
+        completedCycles = 1;
+        ManualCycleCompletionHandled = false;
         StartPunch();
       }
       else
       {
+        ManualCycleActive = false;
         AbortPunch();
         renderStateButton(ButtonCycle, 280, 75, false,
                           "Stop", "Run", WHITE, RED, BLACK, GREEN);
@@ -528,10 +535,10 @@ void handleOffsetAdjust()
       _days++;
     }
     EEPROM.update(11, _days);
-    tft.fillRect(150, 197, 35, 30, BLACK);
+    tft.fillRect(155, 197, 35, 30, BLACK);
     tft.setTextSize(3);
     tft.setTextColor(WHITE);
-    tft.setCursor(150, 200);
+    tft.setCursor(155, 200);
     tft.println(StartOffset[_days]);
   }
 }
@@ -605,7 +612,7 @@ void handleConfigAdjustments()
 
 void handleHomeIcon()
 {
-  if (px >= 260 && px <= 320 && py >= 0 && py <= 40 && CurrentPage != 1)
+  if (CurrentPage != 1 && ButtonReturn.contains(px, py))
   {
     CurrentPage = 1;
     drawMainScreen();
@@ -626,7 +633,7 @@ void updateTemp()
   }
   if (CurrentPage == 3)
   {
-    if (PunchActive)
+    if (ManualCycleActive)
     {
       tft.setTextSize(2);
       tft.setTextColor(WHITE);
@@ -643,8 +650,51 @@ void updateTemp()
       tft.fillRect(15, 138, 180, 20, BLACK);
     }
   }
+  if (CurrentPage == 2)
+  {
+    tft.setTextSize(3);
+    tft.setTextColor(WHITE);
+
+    if (TMin != lastStatusTMin)
+    {
+      lastStatusTMin = TMin;
+      tft.fillRect(20, 125, 70, 35, BLACK);
+      tft.setCursor(20, 130);
+      tft.println(TMin, 1);
+    }
+
+    if (TMax != lastStatusTMax)
+    {
+      lastStatusTMax = TMax;
+      tft.fillRect(20, 195, 70, 35, BLACK);
+      tft.setCursor(20, 200);
+      tft.println(TMax, 1);
+    }
+  }
 }
 /*END----------------------------------------------------------------------------------------------*/
+
+void updateActuatorState()
+{
+  if (CurrentPage != 1)
+    return;
+
+  tft.fillRect(275, 0, 45, 40, BLACK);
+
+  const PunchState state = actuators.getState();
+  if (state != PUNCH_DOWN && state != PUNCH_UP)
+    return;
+
+  char stateLabel[5];
+  const char direction = state == PUNCH_DOWN ? 'v' : '^';
+  snprintf(stateLabel, sizeof(stateLabel), "%d%c",
+           actuators.getCurrentActuator() + 1, direction);
+
+  tft.setTextColor(WHITE);
+  tft.setTextSize(3);
+  tft.setCursor(280, 8);
+  tft.print(stateLabel);
+}
 
 void updateInterval()
 {                              // Display Interval till update
@@ -665,7 +715,6 @@ void updateInterval()
   }
   s_NextTime = _hour + ":" + _min + ":" + _sec;
   tft.setTextSize(2);
-  lastTouchTime  = 0;
   tft.fillRect(125, 68, 100, 25, BLACK);
   tft.setTextColor(WHITE);
   tft.setCursor(125, 75);
@@ -690,6 +739,7 @@ void UpdateSetInterval()
 
 void drawhomeicon()
 { // draws a white home icon
+  ButtonReturn.initButton(&tft, 300, 20, 40, 40, BLACK, BLACK, WHITE, (char *)"", 1);
   tft.drawLine(280, 19, 299, 0, WHITE);
   tft.drawLine(300, 0, 304, 4, WHITE);
   tft.drawLine(304, 3, 304, 0, WHITE);
