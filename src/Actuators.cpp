@@ -10,7 +10,6 @@ extern unsigned long ShakeDepth_ms;
 extern int MaxShakeCycles;
 extern int Cycles;
 extern bool PunchActive;
-extern int currentPunchActuatorGlobal;
 
 // Extern reference to update the global maintained in main.cpp
 extern unsigned long lastPunchCompleteTime; 
@@ -43,7 +42,6 @@ void Actuators::update() {
         case PUNCH_UP:
             if (now - upStartTime >= (unsigned long)StrokeUpTime * 1000) {
                 currentPunchActuator++;
-                currentPunchActuatorGlobal = currentPunchActuator;
                 if (currentPunchActuator < 4) {
                     punchStartTime = now;
                     transitionTo(PUNCH_DOWN);
@@ -100,7 +98,6 @@ void Actuators::startPunch() {
     if (PunchActive) return;
     PunchActive = true;
     currentPunchActuator = 0;
-    currentPunchActuatorGlobal = 0;
     punchStartTime = millis();
     transitionTo(PUNCH_DOWN);
 }

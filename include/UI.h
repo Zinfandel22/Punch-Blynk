@@ -12,7 +12,8 @@ extern int TempSetPoint, Cycles, SetTempDwellTime, TempDwellTime, completedCycle
 extern byte Index, IntervalSet, _days, StrokeDownTime;
 extern byte SetTimeRep_UI, SetTempRep_UI, SetPunchReps;
 extern String s_UpTime, s_PunchReason, s_OldPunchReason;
-extern bool AutoCycleEnabled, PunchActive;
+extern bool AutoCycleEnabled, PunchActive, ManualCycleActive;
+extern bool ManualCycleCompletionHandled;
 extern int cycleValues[];
 extern int CycleIndex, CycleValue;
 extern byte _IntervalSet[];
@@ -35,6 +36,7 @@ void drawManualScreen();
 void drawConfigScreen();
 void updateInterval();
 void updateTemp();
+void updateActuatorState();
 void UpdateSetInterval();
 void drawhomeicon();
 bool ScreenTouched();
