@@ -1,0 +1,10 @@
+Improved touch-button behavior so held presses no longer trigger wildly fast changes.
+Fixed the underlying debounce bug where the UI refresh was resetting the touch timer and letting repeat presses continue too quickly.
+Added safe default EEPROM values for brand-new boards so settings initialize consistently instead of using random erased memory.
+Set the default temp delay to 30 minutes and initialized temp min/max defaults cleanly on first boot.
+Reduced unnecessary writes by only updating min/max temperature values when they actually change.
+Stopped the status screen from redrawing temp min/max every cycle when the values have not changed.
+Improved the firmware’s manual cycle logic so the cycle screen and main run state operate more independently.
+Updated button and screen interactions to make the UI behavior clearer and more reliable.
+Added a safer abort flow so punches can be cancelled and the actuator reset/shake sequence completes before new activity begins.
+Continued the refactor to modularize the firmware and make the code easier to maintain and reason about.
