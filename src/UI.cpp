@@ -33,9 +33,9 @@ static void calibrateTouch()
   uint16_t calibrationData[5];
   Serial.println("Checking touch calibration");
   touchPreferences.begin("touch", false);
-  const bool calibrationDataValid = touchPreferences.isKey("calibration") &&
-                                    touchPreferences.getBytesLength("calibration") == sizeof(calibrationData) &&
-                                    touchPreferences.getBytes("calibration", calibrationData, sizeof(calibrationData)) == sizeof(calibrationData);
+  const bool calibrationDataValid = touchPreferences.isKey("calibration_v2") &&
+                                    touchPreferences.getBytesLength("calibration_v2") == sizeof(calibrationData) &&
+                                    touchPreferences.getBytes("calibration_v2", calibrationData, sizeof(calibrationData)) == sizeof(calibrationData);
 
   if (!calibrationDataValid)
   {
@@ -46,7 +46,7 @@ static void calibrateTouch()
     tft.setCursor(20, 20);
     tft.println("Touch the calibration points");
     tft.calibrateTouch(calibrationData, TFT_MAGENTA, TFT_BLACK, 15);
-    touchPreferences.putBytes("calibration", calibrationData, sizeof(calibrationData));
+    touchPreferences.putBytes("calibration_v2", calibrationData, sizeof(calibrationData));
     Serial.println("Touch calibration saved");
   }
 
@@ -251,7 +251,7 @@ void drawMainScreen()
 
   drawUiButton(ButtonPunch, 280, 135, WHITE, WHITE, BLUE, "Cycle", 2);
   drawUiButton(ButtonInfo, 280, 195, WHITE, WHITE, BLUE, "Status", 2);
-  ButtonProfile.initButton(&tft, 400, 75, 120, 50, WHITE, NAVY, WHITE,
+  ButtonProfile.initButton(&tft, 400, 300, 120, 50, WHITE, NAVY, WHITE,
                            (char *)ProfileNames[Phase], 2);
   ButtonProfile.drawButton(false);
   updateActuatorState();
@@ -721,9 +721,9 @@ void handleProfileButton()
   Phase = (Phase + 1) % 4;
   preferences.putUChar("phase", Phase);
   publishBlynkState();
-  ButtonProfile.initButton(&tft, 400, 75, 120, 50, WHITE, NAVY, WHITE,
+  ButtonProfile.initButton(&tft, 400, 300, 120, 50, WHITE, NAVY, WHITE,
                            (char *)ProfileNames[Phase], 2);
-  ButtonProfile.drawButton(true);
+  ButtonProfile.drawButton(false);
   Serial.print("Profile Pressed: ");
   Serial.println(ProfileNames[Phase]);
 }
@@ -865,57 +865,25 @@ void drawhomeicon()
 bool ScreenTouched()
 {
   static bool lastReportedTouchState = false;
-  static unsigned long lastTouchPollReport = 0;
-  static unsigned long lastRawTouchReport = 0;
   uint16_t touchX = 0;
   uint16_t touchY = 0;
-  uint16_t rawX = 0;
-  uint16_t rawY = 0;
-  const uint16_t rawZ = tft.getTouchRawZ();
-  tft.getTouchRaw(&rawX, &rawY);
   const bool isTouched = tft.getTouch(&touchX, &touchY);
-  px = tft.width() - 1 - touchX;
+  px = touchX;
   py = tft.height() - 1 - touchY;
   pz = isTouched ? 1 : 0;
 
-  if (rawZ > 100 && isTouched && !lastReportedTouchState)
+  if (isTouched && !lastReportedTouchState)
   {
-    Serial.print("Touch detected: x=");
+    Serial.print("Touch detected: mapped x=");
     Serial.print(px);
-    Serial.print(", y=");
-    Serial.print(py);
-    Serial.print(" (calibrated=");
-    Serial.print(touchX);
-    Serial.print(",");
-    Serial.print(touchY);
-    Serial.print(")");
-    Serial.print("; display=");
-    Serial.print(tft.width());
-    Serial.print("x");
-    Serial.println(tft.height());
+    Serial.print(", mapped y=");
+    Serial.println(py);
   }
-  else if (rawZ > 100 && !isTouched && lastReportedTouchState)
+  else if (!isTouched && lastReportedTouchState)
   {
     Serial.println("Touch released");
   }
   lastReportedTouchState = isTouched;
-
-  if (rawZ > 100 && !isTouched && millis() - lastTouchPollReport >= 5000)
-  {
-    Serial.println("Touch polling active; no touch detected");
-    lastTouchPollReport = millis();
-  }
-
-  if (rawZ > 100 && millis() - lastRawTouchReport >= 2000)
-  {
-    Serial.print("Raw touch: x=");
-    Serial.print(rawX);
-    Serial.print(", y=");
-    Serial.print(rawY);
-    Serial.print(", z=");
-    Serial.println(rawZ);
-    lastRawTouchReport = millis();
-  }
 
   unsigned long now = millis();
 
@@ -924,15 +892,10 @@ bool ScreenTouched()
   {
     touchActive = true;
     lastTouchTime = now;
-    if (rawZ > 100)
-    {
-      Serial.print("x:");
-      Serial.print(px);
-      Serial.print(", y:");
-      Serial.print(py);
-      Serial.print(", z:");
-      Serial.println(pz);
-    }
+    Serial.print("Touch accepted: x=");
+    Serial.print(px);
+    Serial.print(", y=");
+    Serial.println(py);
     return true; // New touch event registered
   }
 
