@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026-09-07 - v1.0.0
 - fix(ui): slow touch repeat rate for held inputs
 - fix(eeprom): initialize fresh-board defaults for temp delay and min temp
 - fix(sensor): only write temp min/max when values actually change
