@@ -131,7 +131,7 @@ Restore power to the Arduino Mega.
 
 Expected Result: During setup(), the system detects EEPROM.read(5) == 1 and AutoCycleEnabled == 1. It logs "Power fail so punch once now", sets s_PunchReason = "Power", and immediately executes a single recovery punch sequence.
 
-Test Case 5.3: Mandatory Shake on Partial Cycle Abort or Power Reset
+Test Case 5.3: Mandatory Shake on Partial Cycle Abort
 
 Objective: Validate that if a cycle is interrupted, all solenoids immediately release and the mandatory shake routine runs to clear cap debris before returning to idle.
 
@@ -139,6 +139,6 @@ Steps:
 
 Initiate a sequence.
 
-Mid-way through the sequence, trigger an abort condition (or hit the reset button).
+Mid-way through the sequence, trigger an abort condition.
 
 Expected Result: All actuator pins instantly drop LOW to prevent mechanical bind. Upon system recovery, the state machine forces the rapid down/up shake toggles across the hardware before safely settling into an idle state.

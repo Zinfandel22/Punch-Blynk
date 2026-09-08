@@ -8,8 +8,6 @@
 - refactor(ui): simplify touch detection and state handling
 - fix(cycle): separate manual cycle state from main auto-cycle state
 - fix(actuator): improve abort/shake sequencing
-
-## 2026-09-07
 - refactor: modularize firmware structure and split responsibilities
 - fix: improve touch handling and button hit detection
 - fix: decouple manual punch logic from scheduler state

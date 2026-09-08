@@ -2,7 +2,7 @@
 #define ACTUATORS_H
 
 #include <Arduino.h>
-#include "Config.h"
+#include "config.h"
 
 enum PunchState {
     PUNCH_IDLE,

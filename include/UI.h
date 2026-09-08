@@ -3,7 +3,7 @@
 #include <MCUFRIEND_kbv.h>
 #include <TouchScreen.h>
 #include <Adafruit_GFX.h>
-#include "Config.h"
+#include "config.h"
 
 // --- EXTERN VARIABLES (Bridging to main.cpp) ---
 extern unsigned long InfoAge;

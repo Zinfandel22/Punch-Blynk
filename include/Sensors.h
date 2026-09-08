@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include "Config.h"
+#include "config.h"
 
 // --- EXTERNAL VARIABLES (Bridging to main or UI) ---
 extern float TempAct;

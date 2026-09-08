@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "Config.h"
+#include "config.h"
 #include "UI.h"
 #include <EEPROM.h>
 #include "Sensors.h"
