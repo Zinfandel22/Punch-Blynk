@@ -1,0 +1,48 @@
+Simple commit-message convention
+Use this pattern:
+
+type(scope): summary
+Examples:
+
+fix(ui): slow touch repeat rate
+fix(eeprom): initialize fresh-board temp defaults
+fix(sensor): only update temp min/max when changed
+refactor(ui): decouple manual run state from main screen
+feat(config): add temp dwell adjustment
+Recommended types:
+
+fix = bug fix
+feat = new behavior
+refactor = code cleanup / reorg
+chore = non-functional maintenance
+docs = comments / notes / docs
+Recommended scope:
+
+ui
+eeprom
+sensor
+actuator
+config
+cycle
+main
+A short rule:
+
+1 line summary
+optional body only if needed
+keep it to the point
+Example:
+
+fix(ui): remove touch timer reset in interval updater
+Minimal changelog format
+Keep a simple file such as CHANGELOG.md with entries like:
+
+Changelog
+Unreleased
+fix(ui): slow touch repeat rate for held inputs
+fix(eeprom): initialize fresh-board defaults for temp delay and min temp
+fix(sensor): only write temp min/max when values actually change
+2026-09-07
+refactor(ui): simplify touch detection and state handling
+fix(cycle): separate manual cycle state from main auto-cycle state
+fix(actuator): improve abort/shake sequencing
+This is enough for a small embedded project and stays easy to maintain.
