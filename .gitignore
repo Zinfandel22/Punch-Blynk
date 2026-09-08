@@ -7,6 +7,9 @@
 .vscode/
 /.vs/
 
+# Local device credentials
+include/secrets.h
+
 # Compiled binaries and objects
 *.o
 *.elf

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <EEPROM.h>
+#include <Preferences.h>
 extern unsigned long lastPunchCompleteTime;
+extern Preferences preferences;
 
 // --- FIRMWARE DETAILS ---
 #define Version "(c)2023-26 PIO-26-09-07"
@@ -12,20 +13,20 @@ extern unsigned long lastPunchCompleteTime;
 // --- HARDWARE PIN DEFINITIONS ---
 #define ONE_WIRE_BUS 23  // Serial data wire is on pin 22 for dallas temp sensor
 #define Sol1 25          // Solenoid 1 for Act1
-#define Sol2 27          // Solenoid 2 for Act2
-#define Sol3 29          // Solenoid 3 for Act3
-#define Sol4 31          // Solenoid 4 for Act4
+#define Sol2 14          // Solenoid 2 for Act2
+#define Sol3 26          // Solenoid 3 for Act3
+#define Sol4 27          // Solenoid 4 for Act4
 
-// --- LCD ANALOG CONTROL PINS ---
-#define LCD_CS A3     // Chip Select goes to Analog 3
-#define LCD_CD A2     // Command/Data goes to Analog 2
-#define LCD_WR A1     // LCD Write goes to Analog 1
-#define LCD_RD A0     // LCD Read goes to Analog 0
-#define LCD_RESET A4  // Can alternately just connect to Arduino's reset pin
-#define YP A3         // must be an analog pin, use "An" notation!
-#define XM A2         // must be an analog pin, use "An" notation!
-#define YM 9          // can be a digital pin
-#define XP 8          // can be a digital pin
+// --- ESP32 TFT AND TOUCH PINS ---
+#define LCD_CS 5
+#define LCD_CD 17
+#define LCD_WR 16
+#define LCD_RD 4
+#define LCD_RESET 26
+#define YP 33
+#define XM 32
+#define YM 27
+#define XP 25
 
 //DEFINE TOUCH POINTS FOR ILI9341 PANEL
 //UPDATE AFTER RUNNING CALIBRATION ROUTINE

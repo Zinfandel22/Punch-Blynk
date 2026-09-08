@@ -1,21 +1,23 @@
 #include "UI.h"
 #include "Actuators.h"
+#include <Preferences.h>
 
 // --- 1. GLOBAL HARDWARE OBJECTS ---
-MCUFRIEND_kbv tft;
-TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
+TFT_eSPI tft;
 
 // --- 2. GLOBAL BUTTON OBJECTS ---
-Adafruit_GFX_Button ButtonState;
-Adafruit_GFX_Button ButtonPunch;
-Adafruit_GFX_Button ButtonInfo;
-Adafruit_GFX_Button ButtonReturn;
-Adafruit_GFX_Button ButtonStart;
-Adafruit_GFX_Button ButtonReset;
-Adafruit_GFX_Button ButtonConfig;
-Adafruit_GFX_Button ButtonCycle;
-Adafruit_GFX_Button ButtonCount;
-Adafruit_GFX_Button ButtonShake;
+UiButton ButtonState;
+UiButton ButtonPunch;
+UiButton ButtonInfo;
+UiButton ButtonReturn;
+UiButton ButtonStart;
+UiButton ButtonReset;
+UiButton ButtonConfig;
+UiButton ButtonCycle;
+UiButton ButtonCount;
+UiButton ButtonShake;
+UiButton ButtonProfile;
+static const char *const ProfileNames[] = {"Innoc", "Active", "Lag", "Finish"};
 
 // --- 3. GLOBAL TOUCH VARIABLES ---
 int px, py, pz;
@@ -24,6 +26,86 @@ bool touchActive = false;
 unsigned long touchDelay = 250;
 static float lastStatusTMin = -9999.0f;
 static float lastStatusTMax = -9999.0f;
+static Preferences touchPreferences;
+
+static void calibrateTouch()
+{
+  uint16_t calibrationData[5];
+  Serial.println("Checking touch calibration");
+  touchPreferences.begin("touch", false);
+  const bool calibrationDataValid = touchPreferences.isKey("calibration") &&
+                                    touchPreferences.getBytesLength("calibration") == sizeof(calibrationData) &&
+                                    touchPreferences.getBytes("calibration", calibrationData, sizeof(calibrationData)) == sizeof(calibrationData);
+
+  if (!calibrationDataValid)
+  {
+    Serial.println("Touch calibration required");
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(20, 20);
+    tft.println("Touch the calibration points");
+    tft.calibrateTouch(calibrationData, TFT_MAGENTA, TFT_BLACK, 15);
+    touchPreferences.putBytes("calibration", calibrationData, sizeof(calibrationData));
+    Serial.println("Touch calibration saved");
+  }
+
+  tft.setTouch(calibrationData);
+  touchPreferences.end();
+}
+
+void UiButton::initButton(TFT_eSPI *displayInstance, int16_t x, int16_t y,
+                          uint16_t buttonWidth, uint16_t buttonHeight,
+                          uint16_t buttonOutline, uint16_t buttonFill,
+                          uint16_t buttonTextColor, char *buttonLabel,
+                          uint8_t buttonTextSize)
+{
+  display = displayInstance;
+  centerX = x;
+  centerY = y;
+  width = buttonWidth;
+  height = buttonHeight;
+  outline = buttonOutline;
+  fill = buttonFill;
+  textColor = buttonTextColor;
+  label = buttonLabel;
+  textSize = buttonTextSize;
+}
+
+void UiButton::drawButton(bool inverted)
+{
+  if (display == nullptr)
+    return;
+
+  const uint16_t borderColor = inverted ? fill : outline;
+  const uint16_t backgroundColor = inverted ? outline : fill;
+  const uint16_t foregroundColor = inverted ? outline : textColor;
+  const int16_t left = centerX - width / 2;
+  const int16_t top = centerY - height / 2;
+
+  display->fillRoundRect(left, top, width, height, 4, backgroundColor);
+  display->drawRoundRect(left, top, width, height, 4, borderColor);
+  display->setTextColor(foregroundColor, backgroundColor);
+  display->setTextSize(textSize);
+
+  int16_t textX = left + 4;
+  int16_t textY = centerY - (8 * textSize) / 2;
+  if (label != nullptr)
+  {
+    const uint16_t textWidth = display->textWidth(label);
+    const uint16_t textHeight = display->fontHeight();
+    textX = centerX - textWidth / 2;
+    textY = centerY - textHeight / 2;
+  }
+  display->setCursor(textX, textY);
+  display->print(label == nullptr ? "" : label);
+}
+
+bool UiButton::contains(int16_t x, int16_t y) const
+{
+  return x >= centerX - width / 2 && x <= centerX + width / 2 &&
+         y >= centerY - height / 2 && y <= centerY + height / 2;
+}
 
 struct TouchRect
 {
@@ -38,7 +120,7 @@ static bool pointInRect(int x, int y, const TouchRect &rect)
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
-static bool isPageButtonHit(byte page, Adafruit_GFX_Button &button, int x, int y)
+static bool isPageButtonHit(byte page, UiButton &button, int x, int y)
 {
   return CurrentPage == page && button.contains(x, y);
 }
@@ -48,7 +130,7 @@ static bool isPageTouchRect(byte page, int x, int y, const TouchRect &rect)
   return CurrentPage == page && pointInRect(x, y, rect);
 }
 
-static void drawUiButton(Adafruit_GFX_Button &button, int x, int y,
+static void drawUiButton(UiButton &button, int x, int y,
                         uint16_t outline, uint16_t fill, uint16_t textColor,
                         const char *label, uint8_t textSize)
 {
@@ -56,7 +138,7 @@ static void drawUiButton(Adafruit_GFX_Button &button, int x, int y,
   button.drawButton(true);
 }
 
-static void renderStateButton(Adafruit_GFX_Button &button, int x, int y,
+static void renderStateButton(UiButton &button, int x, int y,
                               bool active, const char *activeLabel,
                               const char *inactiveLabel, uint16_t activeFill,
                               uint16_t activeTextColor, uint16_t inactiveFill,
@@ -70,13 +152,16 @@ static void renderStateButton(Adafruit_GFX_Button &button, int x, int y,
 
 void initDisplay()
 {
-    uint16_t identifier = tft.readID();
-    if (identifier == 0x0101 || identifier == 0x0000 || identifier == 0xFFFF)
-    {
-        identifier = 0x9341;
-    }
-    tft.begin(identifier);
-    tft.setRotation(1);
+  Serial.println("Calling TFT init");
+  tft.init();
+  Serial.println("TFT init complete");
+  tft.setRotation(1);
+  Serial.print("TFT dimensions after rotation: ");
+  Serial.print(tft.width());
+  Serial.print(" x ");
+  Serial.println(tft.height());
+  calibrateTouch();
+  Serial.println("Touch setup complete");
 
     tft.fillScreen(BLACK);
     tft.setTextSize(3);
@@ -166,6 +251,9 @@ void drawMainScreen()
 
   drawUiButton(ButtonPunch, 280, 135, WHITE, WHITE, BLUE, "Cycle", 2);
   drawUiButton(ButtonInfo, 280, 195, WHITE, WHITE, BLUE, "Status", 2);
+  ButtonProfile.initButton(&tft, 400, 75, 120, 50, WHITE, NAVY, WHITE,
+                           (char *)ProfileNames[Phase], 2);
+  ButtonProfile.drawButton(false);
   updateActuatorState();
 }
 /*END----------------------------------------------------------------------------------------------*/
@@ -368,6 +456,7 @@ void ReadScreen()
   handleOffsetAdjust();
   handleConfigAdjustments();
   handleHomeIcon();
+  handleProfileButton();
 }
 
 /*END----------------------------------------------------------------------------------------------*/
@@ -385,7 +474,7 @@ void handleTempAdjust()
     {
       TempSetPoint--;
     }
-    EEPROM.update(4, TempSetPoint);
+    preferences.putInt("tempSetPoint", TempSetPoint);
     tft.fillRect(20, 170, 60, 40, BLACK);
     tft.setTextSize(3);
     tft.setCursor(20, 175);
@@ -406,7 +495,7 @@ void handleIntervalAdjust()
     {
       Index--;
     }
-    EEPROM.update(1, Index);
+    preferences.putUChar("intervalIndex", Index);
     IntervalSet = _IntervalSet[Index];
     Interval = 1440 / IntervalSet + _days * 5;
     UpdateSetInterval();
@@ -420,7 +509,7 @@ void handleRunStop()
   if (isPageButtonHit(1, ButtonState, px, py))
   {
     AutoCycleEnabled = !AutoCycleEnabled;
-    EEPROM.update(0, AutoCycleEnabled);
+    preferences.putBool("autoCycle", AutoCycleEnabled);
     if (AutoCycleEnabled == 0)
     {
       AbortPunch();
@@ -433,7 +522,7 @@ void handleRunStop()
 
 void handleManualCycle()
 {
-  Adafruit_GFX_Button *button = nullptr;
+  UiButton *button = nullptr;
   if (CurrentPage == 1)
     button = &ButtonPunch;
   else if (CurrentPage == 2)
@@ -518,8 +607,8 @@ void handleStatusReset()
     TMax = 0;
     TMin = 99;
     Cycles = 0;
-    EEPROM.update(10, Cycles);
-    EEPROM.update(5, 1);
+    preferences.putInt("cycles", Cycles);
+    preferences.putBool("powerRecovery", true);
     AbortPunch();
     drawInfoScreen();
   }
@@ -538,7 +627,7 @@ void handleOffsetAdjust()
     {
       _days = (_days == 12) ? 0 : _days + 1;
     }
-    EEPROM.update(11, _days);
+    preferences.putUChar("startDelay", _days);
     tft.fillRect(170, 197, 45, 30, BLACK);
     tft.setTextSize(3);
     tft.setTextColor(WHITE);
@@ -560,7 +649,7 @@ void handleConfigAdjustments()
       StrokeDownTime += 5;
     else if (py >= 100 && StrokeDownTime > 5)
       StrokeDownTime -= 5;
-    EEPROM.update(8, StrokeDownTime);
+    preferences.putUChar("strokeDown", StrokeDownTime);
     tft.fillRect(10, 90, 40, 35, BLACK);
     tft.setTextSize(3);
     tft.setCursor(15, 95);
@@ -575,7 +664,7 @@ void handleConfigAdjustments()
       SetTimeRep_UI++;
     else if (py >= 100 && SetTimeRep_UI > 1)
       SetTimeRep_UI--;
-    EEPROM.update(6, SetTimeRep_UI);
+    preferences.putUChar("timeReps", SetTimeRep_UI);
     tft.fillRect(170, 90, 60, 40, BLACK);
     tft.setTextSize(3);
     tft.setCursor(180, 95);
@@ -590,7 +679,7 @@ void handleConfigAdjustments()
       SetTempRep_UI++;
     else if (py >= 200 && SetTempRep_UI > 1)
       SetTempRep_UI--;
-    EEPROM.update(7, SetTempRep_UI);
+    preferences.putUChar("tempReps", SetTempRep_UI);
     tft.fillRect(170, 180, 60, 40, BLACK);
     tft.setTextSize(3);
     tft.setCursor(180, 190);
@@ -605,7 +694,7 @@ void handleConfigAdjustments()
       SetTempDwellTime += 5;
     else if (py >= 200 && SetTempDwellTime > 0)
       SetTempDwellTime -= 5;
-    EEPROM.update(9, SetTempDwellTime);
+    preferences.putInt("tempDwell", SetTempDwellTime);
     tft.fillRect(15, 190, 60, 40, BLACK);
     tft.setTextSize(3);
     tft.setCursor(15, 190);
@@ -621,6 +710,22 @@ void handleHomeIcon()
     CurrentPage = 1;
     drawMainScreen();
   }
+}
+/*END----------------------------------------------------------------------------------------------*/
+
+void handleProfileButton()
+{
+  if (!isPageButtonHit(1, ButtonProfile, px, py))
+    return;
+
+  Phase = (Phase + 1) % 4;
+  preferences.putUChar("phase", Phase);
+  publishBlynkState();
+  ButtonProfile.initButton(&tft, 400, 75, 120, 50, WHITE, NAVY, WHITE,
+                           (char *)ProfileNames[Phase], 2);
+  ButtonProfile.drawButton(true);
+  Serial.print("Profile Pressed: ");
+  Serial.println(ProfileNames[Phase]);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -759,16 +864,58 @@ void drawhomeicon()
 
 bool ScreenTouched()
 {
-  TSPoint p = ts.getPoint();
-  pinMode(XM, OUTPUT);
-  pinMode(YP, OUTPUT);
-  // Get x,y&z values and transpose (There is a better way than this but this works)
-  p.x = (tft.height() - map(p.x, TS_LEFT, TS_RIGHT, tft.height(), 0)); // Scale range to adjust to rotation from Portrait to landscape
-  p.y = (tft.width() - map(p.y, TS_BOT, TS_TOP, tft.width(), 0));
-  px = p.y;
-  py = p.x;
-  pz = p.z;
-  bool isTouched = (pz != 0 && ((pz > MINPRESSURE && pz < MAXPRESSURE) || (px > 100 && px < 900 && py > 100 && py < 900)));
+  static bool lastReportedTouchState = false;
+  static unsigned long lastTouchPollReport = 0;
+  static unsigned long lastRawTouchReport = 0;
+  uint16_t touchX = 0;
+  uint16_t touchY = 0;
+  uint16_t rawX = 0;
+  uint16_t rawY = 0;
+  const uint16_t rawZ = tft.getTouchRawZ();
+  tft.getTouchRaw(&rawX, &rawY);
+  const bool isTouched = tft.getTouch(&touchX, &touchY);
+  px = tft.width() - 1 - touchX;
+  py = tft.height() - 1 - touchY;
+  pz = isTouched ? 1 : 0;
+
+  if (rawZ > 100 && isTouched && !lastReportedTouchState)
+  {
+    Serial.print("Touch detected: x=");
+    Serial.print(px);
+    Serial.print(", y=");
+    Serial.print(py);
+    Serial.print(" (calibrated=");
+    Serial.print(touchX);
+    Serial.print(",");
+    Serial.print(touchY);
+    Serial.print(")");
+    Serial.print("; display=");
+    Serial.print(tft.width());
+    Serial.print("x");
+    Serial.println(tft.height());
+  }
+  else if (rawZ > 100 && !isTouched && lastReportedTouchState)
+  {
+    Serial.println("Touch released");
+  }
+  lastReportedTouchState = isTouched;
+
+  if (rawZ > 100 && !isTouched && millis() - lastTouchPollReport >= 5000)
+  {
+    Serial.println("Touch polling active; no touch detected");
+    lastTouchPollReport = millis();
+  }
+
+  if (rawZ > 100 && millis() - lastRawTouchReport >= 2000)
+  {
+    Serial.print("Raw touch: x=");
+    Serial.print(rawX);
+    Serial.print(", y=");
+    Serial.print(rawY);
+    Serial.print(", z=");
+    Serial.println(rawZ);
+    lastRawTouchReport = millis();
+  }
 
   unsigned long now = millis();
 
@@ -777,12 +924,15 @@ bool ScreenTouched()
   {
     touchActive = true;
     lastTouchTime = now;
-    Serial.print("x:");
-    Serial.print(px);
-    Serial.print(", y:");
-    Serial.print(py);
-    Serial.print(", z:");
-    Serial.println(pz);
+    if (rawZ > 100)
+    {
+      Serial.print("x:");
+      Serial.print(px);
+      Serial.print(", y:");
+      Serial.print(py);
+      Serial.print(", z:");
+      Serial.println(pz);
+    }
     return true; // New touch event registered
   }
 

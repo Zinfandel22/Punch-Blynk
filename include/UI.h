@@ -1,9 +1,29 @@
 #pragma once
 #include <Arduino.h>
-#include <MCUFRIEND_kbv.h>
-#include <TouchScreen.h>
-#include <Adafruit_GFX.h>
+#include <TFT_eSPI.h>
 #include "config.h"
+
+class UiButton
+{
+public:
+	void initButton(TFT_eSPI *display, int16_t x, int16_t y, uint16_t width,
+									uint16_t height, uint16_t outline, uint16_t fill,
+									uint16_t textColor, char *label, uint8_t textSize);
+	void drawButton(bool inverted = false);
+	bool contains(int16_t x, int16_t y) const;
+
+private:
+	TFT_eSPI *display = nullptr;
+	int16_t centerX = 0;
+	int16_t centerY = 0;
+	uint16_t width = 0;
+	uint16_t height = 0;
+	uint16_t outline = 0;
+	uint16_t fill = 0;
+	uint16_t textColor = 0;
+	char *label = nullptr;
+	uint8_t textSize = 1;
+};
 
 // --- EXTERN VARIABLES (Bridging to main.cpp) ---
 extern unsigned long InfoAge;
@@ -19,6 +39,9 @@ extern int CycleIndex, CycleValue;
 extern byte _IntervalSet[];
 extern byte StartOffset[];
 extern byte CurrentPage;
+extern byte Phase;
+extern TFT_eSPI tft;
+void publishBlynkState();
 
 // --- EXTERNAL FUNCTIONS (Defined elsewhere, called by UI) ---
 float GetTemp();
@@ -52,3 +75,4 @@ void handleStatusReset();
 void handleOffsetAdjust();
 void handleConfigAdjustments();
 void handleHomeIcon();
+void handleProfileButton();

@@ -1,5 +1,4 @@
 #include "Sensors.h"
-#include <EEPROM.h>
 
 // --- HARDWARE INSTANTIATIONS ---
 OneWire oneWire(ONE_WIRE_BUS);
@@ -40,11 +39,11 @@ float GetTemp() {
   TempAct = newTemperature;
   if ((TempAct != TMax) && (TempAct > TMax)) {
     TMax = TempAct;
-    EEPROM.update(2, TMax);
+    preferences.putFloat("tempMax", TMax);
   }
   if ((TempAct != TMin) && (TempAct < TMin) && (TempAct != 0)) {
     TMin = TempAct;
-    EEPROM.update(3, TMin);
+    preferences.putFloat("tempMin", TMin);
   }
   return TempAct;
 }

@@ -1,5 +1,4 @@
 #include "Actuators.h"
-#include <EEPROM.h>
 
 // External variables from main.cpp
 extern byte PinOutputs[4];
@@ -48,7 +47,7 @@ void Actuators::update() {
                 } else {
                     lastPunchCompleteTime = now; // Update global for UI
                     Cycles += 1;
-                    EEPROM.update(10, Cycles);
+                    preferences.putInt("cycles", Cycles);
                     transitionTo(PUNCH_SHAKE_WAIT);
                 }
             }

@@ -17,13 +17,13 @@
 
 **Satori Cellars - Cap Management Automation**
 
-This project automates the wine must cap management process, simulating manual punch-downs while providing configurable time- and temperature-initiated actuation. The system is designed to run on an Arduino Mega 2560 and utilizes a non-blocking Finite State Machine (FSM) to maintain a highly responsive touchscreen interface during mechanical operations.
+This project automates the wine must cap management process, simulating manual punch-downs while providing configurable time- and temperature-initiated actuation. The system is designed to run on an ESP32 LOLIN Lite and utilizes a non-blocking Finite State Machine (FSM) to maintain a highly responsive touchscreen interface during mechanical operations.
 
 ---
 
 ## Hardware Stack
 
-* **Microcontroller:** Arduino Mega 2560
+* **Microcontroller:** Wemos LOLIN Lite ESP32
 * **Display:** 8-bit parallel ILI9341 TFT display with resistive TouchScreen panel
 * **Temperature Sensing:** Maxim/Dallas DS18B20 (OneWire)
 * **Actuation:** 4 Actuator Solenoids (Relay/Driver controlled)
@@ -32,18 +32,45 @@ This project automates the wine must cap management process, simulating manual p
 
 ## Program Structure & Modular Architecture
 
-The codebase is built using **PlatformIO** and the Atmel AVR framework, structured into isolated modules to separate hardware concerns from core business logic.
+The codebase is built using **PlatformIO** and the Arduino ESP32 framework, structured into isolated modules to separate hardware concerns from core business logic.
 
 * **`main.cpp`**
-The central entry point and main loop coordinator. It handles EEPROM state restoration, evaluates time and temperature logic thresholds, and triggers punch sequences. It serves as the bridge between the UI, sensors, and actuator modules.
+The central entry point and main loop coordinator. It restores persistent controller settings, evaluates time and temperature logic thresholds, and triggers punch sequences. It serves as the bridge between the UI, sensors, actuator modules, and Blynk cloud.
 * **`Actuators.h` / `Actuators.cpp`**
 A non-blocking Finite State Machine (FSM) that governs the mechanical punch sequence. It manages the timing for actuator extension, retraction, dwell states, and the multi-cycle post-punch shake routine without relying on `delay()`.
-* **`UI.h` / `UI.cpp**`
-Isolates all display initialization, page drawing routines, touch screen polling, and button event handlers. It utilizes the `MCUFRIEND_kbv` and `Adafruit_GFX` libraries optimized with `-O3` build flags for maximum render speed.
+* **`UI.h` / `UI.cpp`**
+Isolates all display initialization, page drawing routines, TFT_eSPI touch polling, and button event handlers.
 * **`Sensors.h` / `Sensors.cpp**`
 Manages OneWire/Dallas temperature polling. It handles sensor initialization, error checking, and tracks minimum/maximum temperature values across power cycles.
 * **`config.h`**
 The global configuration header containing hardware pin definitions, LCD analog control lines, touch calibration constants, UI color macros, and default operational timings.
+
+---
+
+## Blynk Virtual Pins
+
+The firmware synchronizes these virtual pins with the Blynk cloud:
+
+| Pin | Direction | Purpose |
+| --- | --- | --- |
+| V0 | Output | Controller uptime |
+| V1 | Input/output | Punch interval |
+| V2 | Output | Current temperature |
+| V3 | Output | Punch countdown |
+| V4 | Output | Last punch reason |
+| V5 | Input/output | Stroke-down time |
+| V6 | Input/output | Stroke-up time |
+| V7 | Input/output | Time-trigger punch repetitions |
+| V8 | Input/output | Temperature-trigger punch repetitions |
+| V9 | Input/output | Manual/automatic mode |
+| V10 | Input/output | Active phase: `0=Innoc`, `1=Active`, `2=Lag`, `3=Finish` |
+| V11 | Input/output | Shake command and status |
+| V12 | Output | Pressure placeholder; currently `0` |
+| V13 | Input/output | Automatic cycle run/stop state |
+| V14 | Input/output | Temperature dwell time |
+| V15 | Output | Maximum recorded temperature |
+| V16 | Input/output | Temperature threshold |
+| V17 | Input/output | Reset command/status |
 
 ---
 
@@ -53,9 +80,11 @@ The global configuration header containing hardware pin definitions, LCD analog 
 
 To ensure the 8-bit ILI9341 TFT display remains responsive to touch inputs, the actuator FSM operations avoid blocking functions like `delay()`. The actuator punch and shake routines operate as a continuous state machine (`PUNCH_DOWN`, `PUNCH_UP`, `PUNCH_SHAKE_WAIT`, etc.) evaluated on every cycle of the main loop against `millis()` timers.
 
-### Power Failure Resilience
+### Persistent Settings
 
-The controller utilizes the onboard EEPROM to periodically save critical state variables such as interval settings, target temperatures, dwell times, and cycle counts. Upon startup, the system checks for unexpected reboots; if a power failure occurs mid-cycle while the system is armed, it automatically executes a recovery punch to prevent the must cap from drying out.
+The ESP32 uses the `Preferences` library to persist controller settings in the `settings` namespace. Named keys store automatic run state, punch interval index, minimum and maximum temperatures, temperature threshold, time- and temperature-trigger repetition counts, stroke-down time, temperature dwell time, cycle count, start delay, and power-recovery state.
+
+TFT_eSPI touch calibration data is stored separately in the `touch` Preferences namespace. Values are loaded during startup and updated when settings change through the local UI or Blynk.
 
 ### Sequential Actuation & Safety
 

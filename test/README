@@ -127,7 +127,7 @@ Allow system uptime to exceed 1 hour (or mock EEPROM.read(5) == 1).
 
 Cut main power abruptly mid-cycle while an actuator is down.
 
-Restore power to the Arduino Mega.
+Restore power to the Wemos LOLIN Lite ESP32.
 
 Expected Result: During setup(), the system detects EEPROM.read(5) == 1 and AutoCycleEnabled == 1. It logs "Power fail so punch once now", sets s_PunchReason = "Power", and immediately executes a single recovery punch sequence.
 

@@ -2,13 +2,13 @@
 
 **Satori Cellars - Cap Management Automation**
 
-This project automates the wine must cap management process, simulating manual punch-downs while providing configurable time- and temperature-initiated actuation. The system is designed to run on an Arduino Mega 2560 and utilizes a non-blocking Finite State Machine (FSM) to maintain a highly responsive touchscreen interface during mechanical operations.
+This project automates the wine must cap management process, simulating manual punch-downs while providing configurable time- and temperature-initiated actuation. The system is designed to run on a Wemos LOLIN Lite ESP32 and utilizes a non-blocking Finite State Machine (FSM) to maintain a highly responsive touchscreen interface during mechanical operations.
 
 ---
 
 ## Hardware Stack
 
-* **Microcontroller:** Arduino Mega 2560
+* **Microcontroller:** Wemos LOLIN Lite ESP32
 * **Display:** 8-bit parallel ILI9341 TFT display with resistive TouchScreen panel
 * **Temperature Sensing:** Maxim/Dallas DS18B20 (OneWire)
 * **Actuation:** 4 Actuator Solenoids (Relay/Driver controlled)
@@ -17,7 +17,7 @@ This project automates the wine must cap management process, simulating manual p
 
 ## Program Structure & Modular Architecture
 
-The codebase is built using **PlatformIO** and the Atmel AVR framework, structured into isolated modules to separate hardware concerns from core business logic.
+The codebase is built using **PlatformIO** and the Arduino ESP32 framework, structured into isolated modules to separate hardware concerns from core business logic.
 
 * **`main.cpp`**
 The central entry point and main loop coordinator. It handles EEPROM state restoration, evaluates time and temperature logic thresholds, and triggers punch sequences. It serves as the bridge between the UI, sensors, and actuator modules.
