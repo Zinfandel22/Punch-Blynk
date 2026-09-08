@@ -59,7 +59,7 @@ int MaxShakeCycles = 4;
 
 // --- LOOKUP TABLES ---
 byte _IntervalSet[8] = {1, 2, 3, 4, 6, 8, 12, 24};
-byte StartOffset[12] = {00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55};
+byte StartOffset[13] = {00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60};
 
 /* --------------------------------------------------------------------------------------------------------*/
 void setup(void)
@@ -108,6 +108,11 @@ void setup(void)
   SetTempDwellTime = EEPROM.read(9);
   Cycles = EEPROM.read(10);
   _days = EEPROM.read(11);
+  if (_days > 12)
+  {
+    _days = 0;
+    EEPROM.update(11, _days);
+  }
 
   TempAct = GetTemp();
   drawMainScreen();

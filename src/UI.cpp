@@ -21,7 +21,7 @@ Adafruit_GFX_Button ButtonShake;
 int px, py, pz;
 unsigned long lastTouchTime = 0;
 bool touchActive = false;
-unsigned long touchDelay = 500;
+unsigned long touchDelay = 250;
 static float lastStatusTMin = -9999.0f;
 static float lastStatusTMax = -9999.0f;
 
@@ -258,18 +258,22 @@ void drawInfoScreen()
   tft.setCursor(125, 130);
   tft.println(s_UpTime);
 
-  tft.setCursor(155, 200);
+  Uptime();
+  tft.setCursor(125, 130);
+  tft.println(s_UpTime);
+
+  tft.setCursor(170, 200);
   tft.println(StartOffset[_days]);
 
   // Reduce Interval Down
   tft.setTextSize(3);
   tft.setTextColor(RED);
-  tft.setCursor(125, 200);
+  tft.setCursor(120, 200);
   tft.println("-");
 
   // Increase Interval Up
   tft.setTextColor(GREEN);
-  tft.setCursor(200, 200);
+  tft.setCursor(250, 200);
   tft.println("+");
 
   // BUTTONS
@@ -526,19 +530,19 @@ void handleOffsetAdjust()
 {
   if (isPageTouchRect(2, px, py, {100, 150, 270, 240}))
   {
-    if (px < 150 && _days > 0)
+    if (px < 180)
     {
-      _days = max((byte)0, (byte)(_days - 1));
+      _days = (_days == 0) ? 12 : _days - 1;
     }
-    else if (px >= 150 && _days < 11)
+    else
     {
-      _days = min((byte)11, (byte)(_days + 1));
+      _days = (_days == 12) ? 0 : _days + 1;
     }
     EEPROM.update(11, _days);
-    tft.fillRect(155, 197, 35, 30, BLACK);
+    tft.fillRect(170, 197, 45, 30, BLACK);
     tft.setTextSize(3);
     tft.setTextColor(WHITE);
-    tft.setCursor(155, 200);
+    tft.setCursor(170, 200);
     tft.println(StartOffset[_days]);
   }
 }
@@ -784,10 +788,7 @@ bool ScreenTouched()
 
   // When released, reset touch state so next press can register
   if (!isTouched)
-  { //} && touchActive) {
-    //  if (now - lastTouchTime > 100) {  // 100ms release debounce
-    touchActive = false;
-    //  }
+  {     touchActive = false;
   }
   return false; // No new touch detected
 }
