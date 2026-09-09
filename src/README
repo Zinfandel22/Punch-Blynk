@@ -24,7 +24,7 @@ This project automates the wine must cap management process, simulating manual p
 ## Hardware Stack
 
 * **Microcontroller:** Wemos LOLIN Lite ESP32
-* **Display:** 8-bit parallel ILI9341 TFT display with resistive TouchScreen panel
+* **Display:** ILI9488 TFT display with resistive touch panel, driven by TFT_eSPI
 * **Temperature Sensing:** Maxim/Dallas DS18B20 (OneWire)
 * **Actuation:** 4 Actuator Solenoids (Relay/Driver controlled)
 
@@ -43,18 +43,32 @@ Isolates all display initialization, page drawing routines, TFT_eSPI touch polli
 * **`Sensors.h` / `Sensors.cpp**`
 Manages OneWire/Dallas temperature polling. It handles sensor initialization, error checking, and tracks minimum/maximum temperature values across power cycles.
 * **`config.h`**
-The global configuration header containing hardware pin definitions, LCD analog control lines, touch calibration constants, UI color macros, and default operational timings.
+Contains shared hardware pin definitions, UI colors, and controller constants.
+
+### Runtime Loop Order
+
+`main.cpp` keeps the loop coordinator small by delegating each phase to a named routine:
+
+1. Read touchscreen input and service Blynk Edgent.
+2. Run telemetry timers and pending display redraws.
+3. Advance the actuator FSM.
+4. Process manual-cycle progression.
+5. Persist runtime state and evaluate automatic triggers.
+6. Perform once-per-second clock, temperature, actuator, and countdown updates.
+7. Retract all actuators whenever the FSM is idle.
+
+The UI module owns local touch events, the actuator module owns punch-state transitions, and the sensor module owns temperature polling. Selected runtime values are shared through the declarations in `UI.h` and `Sensors.h` so local controls and Blynk commands update the same active state.
 
 ---
 
 ## Blynk Virtual Pins
 
-The firmware synchronizes these virtual pins with the Blynk cloud:
+The firmware publishes these virtual pins to Blynk for monitoring and accepts live control changes through their input handlers. Preferences on the device are authoritative after boot and reconnect; reconnecting publishes local state instead of restoring cloud values. V1 stores the selected phase's cycle interval directly in hours. Changing V1 does not reset the active countdown unless the new interval is shorter than the remaining countdown.
 
 | Pin | Direction | Purpose |
 | --- | --- | --- |
-| V0 | Output | Controller uptime |
-| V1 | Input/output | Punch interval |
+| V0 | Output | Temperature dwell time as a string |
+| V1 | Input/output | Persisted cycle interval in hours: `1` to `24` |
 | V2 | Output | Current temperature |
 | V3 | Output | Punch countdown |
 | V4 | Output | Last punch reason |
@@ -62,15 +76,16 @@ The firmware synchronizes these virtual pins with the Blynk cloud:
 | V6 | Input/output | Stroke-up time |
 | V7 | Input/output | Time-trigger punch repetitions |
 | V8 | Input/output | Temperature-trigger punch repetitions |
-| V9 | Input/output | Manual/automatic mode |
+| V9 | Input/output | One-shot touch calibration command |
 | V10 | Input/output | Active phase: `0=Innoc`, `1=Active`, `2=Lag`, `3=Finish` |
-| V11 | Input/output | Shake command and status |
-| V12 | Output | Pressure placeholder; currently `0` |
+| V11 | Input/output | One-shot Shake command; transient runtime status, never persisted |
+| V12 | Output | Countdown timer formatted as `HH:MM:SS` |
 | V13 | Input/output | Automatic cycle run/stop state |
 | V14 | Input/output | Temperature dwell time |
 | V15 | Output | Maximum recorded temperature |
-| V16 | Input/output | Temperature threshold |
+| V16 | Input/output | Phase-specific temperature threshold, persisted per V10 phase |
 | V17 | Input/output | Reset command/status |
+| V19 | Input/output | Bin name |
 
 ---
 
@@ -78,13 +93,13 @@ The firmware synchronizes these virtual pins with the Blynk cloud:
 
 ### Non-Blocking FSM Architecture
 
-To ensure the 8-bit ILI9341 TFT display remains responsive to touch inputs, the actuator FSM operations avoid blocking functions like `delay()`. The actuator punch and shake routines operate as a continuous state machine (`PUNCH_DOWN`, `PUNCH_UP`, `PUNCH_SHAKE_WAIT`, etc.) evaluated on every cycle of the main loop against `millis()` timers.
+To keep the ILI9488 TFT display responsive to touch inputs, the actuator FSM operations avoid blocking waits during punch sequences. The actuator punch and shake routines operate as a continuous state machine (`PUNCH_DOWN`, `PUNCH_UP`, `PUNCH_SHAKE_WAIT`, etc.) evaluated on every cycle of the main loop against `millis()` timers.
 
 ### Persistent Settings
 
-The ESP32 uses the `Preferences` library to persist controller settings in the `settings` namespace. Named keys store automatic run state, punch interval index, minimum and maximum temperatures, temperature threshold, time- and temperature-trigger repetition counts, stroke-down time, temperature dwell time, cycle count, start delay, and power-recovery state.
+The ESP32 uses the `Preferences` library to persist controller settings in the `settings` namespace. Named keys store automatic run state, phase profiles, phase-specific temperature thresholds, minimum and maximum temperatures, repetition counts, stroke timing, dwell time, cycle count, bin name, countdown state, and power-recovery state. V1, V5, V7, V8, V14, and V16 each retain an independent value for all four V10 phases.
 
-TFT_eSPI touch calibration data is stored separately in the `touch` Preferences namespace. Values are loaded during startup and updated when settings change through the local UI or Blynk.
+TFT_eSPI touch calibration data is stored separately in the `touch` Preferences namespace. Valid calibration bytes are loaded during startup; the calibration screen runs only on first initialization or after the explicit V9 calibration command.
 
 ### Sequential Actuation & Safety
 

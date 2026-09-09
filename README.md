@@ -9,7 +9,7 @@ This project automates the wine must cap management process, simulating manual p
 ## Hardware Stack
 
 * **Microcontroller:** Wemos LOLIN Lite ESP32
-* **Display:** 8-bit parallel ILI9341 TFT display with resistive TouchScreen panel
+* **Display:** ILI9488 TFT display with resistive touch panel, driven by TFT_eSPI
 * **Temperature Sensing:** Maxim/Dallas DS18B20 (OneWire)
 * **Actuation:** 4 Actuator Solenoids (Relay/Driver controlled)
 
@@ -17,18 +17,30 @@ This project automates the wine must cap management process, simulating manual p
 
 ## Program Structure & Modular Architecture
 
-The codebase is built using **PlatformIO** and the Arduino ESP32 framework, structured into isolated modules to separate hardware concerns from core business logic.
+The codebase is built using **PlatformIO** and the Arduino ESP32 framework. Hardware-specific code is kept in modules, while `main.cpp` coordinates runtime state, persistence, Blynk input, and the actuator workflow.
 
 * **`main.cpp`**
-The central entry point and main loop coordinator. It handles EEPROM state restoration, evaluates time and temperature logic thresholds, and triggers punch sequences. It serves as the bridge between the UI, sensors, and actuator modules.
+The central entry point and main loop coordinator. It restores Preferences state, handles Blynk virtual-pin commands, evaluates time and temperature triggers, and coordinates the UI, sensors, and actuator modules.
 * **`Actuators.h` / `Actuators.cpp**`
-A non-blocking Finite State Machine (FSM) that governs the mechanical punch sequence. It manages the timing for actuator extension, retraction, dwell states, and the multi-cycle post-punch shake routine without relying on `delay()`.
+The non-blocking Finite State Machine (FSM) that governs actuator extension, retraction, dwell states, and the post-punch shake routine.
 * **`UI.h` / `UI.cpp**`
-Isolates all display initialization, page drawing routines, touch screen polling, and button event handlers. It utilizes the `MCUFRIEND_kbv` and `Adafruit_GFX` libraries optimized with `-O3` build flags for maximum render speed.
+Contains display initialization, touch calibration, page drawing, screen polling, and local button handlers. It uses TFT_eSPI and stores touch calibration separately from application settings.
 * **`Sensors.h` / `Sensors.cpp**`
-Manages OneWire/Dallas temperature polling. It handles sensor initialization, error checking, and tracks minimum/maximum temperature values across power cycles.
+Manages OneWire/Dallas temperature polling and tracks minimum and maximum temperatures.
 * **`Config.h`**
-The global configuration header containing hardware pin definitions, LCD analog control lines, touch calibration constants, UI color macros, and default operational timings.
+Contains hardware pin definitions, display configuration, UI colors, and shared constants.
+
+### Runtime Loop Order
+
+Each pass through `loop()` follows this order:
+
+1. Poll the local touchscreen and service Blynk Edgent.
+2. Run scheduled Blynk telemetry and deferred display redraws.
+3. Advance the actuator FSM.
+4. Handle screen timeouts and manual-cycle progress.
+5. Persist runtime state and evaluate automatic time/temperature triggers.
+6. Refresh the clock, temperature, actuator state, and countdown once per second.
+7. Force all actuators to the safe retracted state when idle.
 
 ---
 
@@ -36,11 +48,11 @@ The global configuration header containing hardware pin definitions, LCD analog 
 
 ### Non-Blocking FSM Architecture
 
-To ensure the 8-bit ILI9341 TFT display remains responsive to touch inputs, the system strictly avoids blocking functions like `delay()`. The actuator punch and shake routines operate as a continuous state machine (`PUNCH_DOWN`, `PUNCH_UP`, `PUNCH_SHAKE_WAIT`, etc.) evaluated on every cycle of the main loop against `millis()` timers.
+To keep the ILI9488 TFT display responsive to touch inputs, the actuator punch and shake routines operate as a continuous state machine (`PUNCH_DOWN`, `PUNCH_UP`, `PUNCH_SHAKE_WAIT`, etc.) evaluated on every cycle of the main loop against `millis()` timers.
 
 ### Power Failure Resilience
 
-The controller utilizes the onboard EEPROM to periodically save critical state variables such as interval settings, target temperatures, dwell times, and cycle counts. Upon startup, the system checks for unexpected reboots; if a power failure occurs mid-cycle while the system is armed, it automatically executes a recovery punch to prevent the must cap from drying out.
+The controller uses the ESP32 `Preferences` library instead of EEPROM. Application settings are stored in the `settings` namespace, while TFT touch calibration is stored in the `touch` namespace. The running countdown and temperature dwell state are periodically saved so an armed controller can resume after power loss without depending on Blynk connectivity.
 
 ### Sequential Actuation & Safety
 

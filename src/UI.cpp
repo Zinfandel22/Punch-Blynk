@@ -1,6 +1,7 @@
 #include "UI.h"
 #include "Actuators.h"
 #include <Preferences.h>
+#include <time.h>
 
 // --- 1. GLOBAL HARDWARE OBJECTS ---
 TFT_eSPI tft;
@@ -9,49 +10,81 @@ TFT_eSPI tft;
 UiButton ButtonState;
 UiButton ButtonPunch;
 UiButton ButtonInfo;
-UiButton ButtonReturn;
-UiButton ButtonStart;
-UiButton ButtonReset;
-UiButton ButtonConfig;
-UiButton ButtonCycle;
-UiButton ButtonCount;
-UiButton ButtonShake;
-UiButton ButtonProfile;
+UiButton ProfileButtons[4];
 static const char *const ProfileNames[] = {"Innoc", "Active", "Lag", "Finish"};
+static const int16_t ProfileButtonX[] = {60, 180, 300, 420};
+static constexpr int16_t ProfileButtonY = 290;
+static constexpr uint16_t ProfileButtonWidth = 110;
+static constexpr uint16_t ProfileButtonHeight = 40;
 
 // --- 3. GLOBAL TOUCH VARIABLES ---
 int px, py, pz;
 unsigned long lastTouchTime = 0;
 bool touchActive = false;
 unsigned long touchDelay = 250;
-static float lastStatusTMin = -9999.0f;
-static float lastStatusTMax = -9999.0f;
 static Preferences touchPreferences;
+
+void updateCurrentTime()
+{
+  char timeText[12] = "--:--:--";
+  const time_t now = time(nullptr);
+  if (now > 100000)
+  {
+    struct tm timeInfo;
+    localtime_r(&now, &timeInfo);
+    strftime(timeText, sizeof(timeText), "%H:%M:%S", &timeInfo);
+  }
+
+  tft.fillRect(250, 4, 100, 31, BLACK);
+  tft.setTextColor(WHITE, BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(250, 14);
+  tft.print(timeText);
+}
+
+void updateBinName()
+{
+  tft.fillRect(125, 4, 120, 31, BLACK);
+  tft.setTextColor(CYAN, BLACK);
+  tft.setTextSize(3);
+  const int16_t nameWidth = tft.textWidth(BinName);
+  tft.setCursor(max((int16_t)125, (int16_t)(245 - nameWidth)), 8);
+  tft.print(BinName);
+}
+
+static bool loadTouchCalibration(uint16_t calibrationData[5])
+{
+  touchPreferences.begin("touch", false);
+  const bool calibrationDataValid = touchPreferences.isKey("calibration_v2") &&
+                                    touchPreferences.getBytesLength("calibration_v2") == sizeof(uint16_t[5]) &&
+                                    touchPreferences.getBytes("calibration_v2", calibrationData, sizeof(uint16_t[5])) == sizeof(uint16_t[5]);
+  touchPreferences.end();
+  return calibrationDataValid;
+}
 
 static void calibrateTouch()
 {
   uint16_t calibrationData[5];
-  Serial.println("Checking touch calibration");
+  Serial.println("Touch calibration required");
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(20, 20);
+  tft.println("Touch the calibration points");
+  tft.calibrateTouch(calibrationData, TFT_MAGENTA, TFT_BLACK, 15);
   touchPreferences.begin("touch", false);
-  const bool calibrationDataValid = touchPreferences.isKey("calibration_v2") &&
-                                    touchPreferences.getBytesLength("calibration_v2") == sizeof(calibrationData) &&
-                                    touchPreferences.getBytes("calibration_v2", calibrationData, sizeof(calibrationData)) == sizeof(calibrationData);
-
-  if (!calibrationDataValid)
-  {
-    Serial.println("Touch calibration required");
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setTextSize(2);
-    tft.setCursor(20, 20);
-    tft.println("Touch the calibration points");
-    tft.calibrateTouch(calibrationData, TFT_MAGENTA, TFT_BLACK, 15);
-    touchPreferences.putBytes("calibration_v2", calibrationData, sizeof(calibrationData));
-    Serial.println("Touch calibration saved");
-  }
-
-  tft.setTouch(calibrationData);
+  touchPreferences.putBytes("calibration_v2", calibrationData, sizeof(calibrationData));
   touchPreferences.end();
+  Serial.println("Touch calibration saved");
+  tft.setTouch(calibrationData);
+}
+
+void resetTouchCalibration()
+{
+  touchPreferences.begin("touch", false);
+  touchPreferences.remove("calibration_v2");
+  touchPreferences.end();
+  calibrateTouch();
 }
 
 void UiButton::initButton(TFT_eSPI *displayInstance, int16_t x, int16_t y,
@@ -120,22 +153,20 @@ static bool pointInRect(int x, int y, const TouchRect &rect)
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
-static bool isPageButtonHit(byte page, UiButton &button, int x, int y)
-{
-  return CurrentPage == page && button.contains(x, y);
-}
-
-static bool isPageTouchRect(byte page, int x, int y, const TouchRect &rect)
-{
-  return CurrentPage == page && pointInRect(x, y, rect);
-}
-
 static void drawUiButton(UiButton &button, int x, int y,
                         uint16_t outline, uint16_t fill, uint16_t textColor,
                         const char *label, uint8_t textSize)
 {
   button.initButton(&tft, x, y, BUTTON_W, BUTTON_H, outline, fill, textColor, (char *)label, textSize);
-  button.drawButton(true);
+  button.drawButton(false);
+}
+
+static void drawSizedUiButton(UiButton &button, int x, int y, uint16_t width,
+                              uint16_t height, uint16_t outline, uint16_t fill,
+                              uint16_t textColor, const char *label, uint8_t textSize)
+{
+  button.initButton(&tft, x, y, width, height, outline, fill, textColor, (char *)label, textSize);
+  button.drawButton(false);
 }
 
 static void renderStateButton(UiButton &button, int x, int y,
@@ -150,6 +181,31 @@ static void renderStateButton(UiButton &button, int x, int y,
                active ? activeLabel : inactiveLabel, 2);
 }
 
+static void renderSizedStateButton(UiButton &button, int x, int y, uint16_t width,
+                                   uint16_t height, bool active,
+                                   const char *activeLabel, const char *inactiveLabel,
+                                   uint16_t activeFill, uint16_t activeTextColor,
+                                   uint16_t inactiveFill, uint16_t inactiveTextColor)
+{
+  drawSizedUiButton(button, x, y, width, height, WHITE,
+                    active ? activeFill : inactiveFill,
+                    active ? activeTextColor : inactiveTextColor,
+                    active ? activeLabel : inactiveLabel, 2);
+}
+
+static void drawProfileButtons()
+{
+  for (byte profile = 0; profile < 4; profile++)
+  {
+    ProfileButtons[profile].initButton(&tft, ProfileButtonX[profile], ProfileButtonY,
+                                       ProfileButtonWidth, ProfileButtonHeight,
+                                       WHITE, profile == Phase ? GREEN : BLACK,
+                                       profile == Phase ? BLACK : WHITE,
+                                       (char *)ProfileNames[profile], 2);
+    ProfileButtons[profile].drawButton(false);
+  }
+}
+
 void initDisplay()
 {
   Serial.println("Calling TFT init");
@@ -160,7 +216,16 @@ void initDisplay()
   Serial.print(tft.width());
   Serial.print(" x ");
   Serial.println(tft.height());
-  calibrateTouch();
+  uint16_t calibrationData[5];
+  if (loadTouchCalibration(calibrationData))
+  {
+    tft.setTouch(calibrationData);
+    Serial.println("Touch calibration loaded");
+  }
+  else
+  {
+    calibrateTouch();
+  }
   Serial.println("Touch setup complete");
 
     tft.fillScreen(BLACK);
@@ -168,7 +233,7 @@ void initDisplay()
     tft.setTextColor(RED);
     tft.setCursor(15, 10);
     tft.println("Satori Cellars");
-    tft.drawLine(10, 42, 320, 42, GREEN);
+    tft.drawLine(10, 42, 470, 42, GREEN);
     tft.setTextSize(2);
     tft.setTextColor(WHITE);
     tft.setCursor(15, 50);
@@ -195,8 +260,10 @@ void drawMainScreen()
   tft.setTextSize(3);
   tft.setTextColor(RED);
   tft.setCursor(15, 10);
-  tft.println("Satori Cellars");
-  tft.drawLine(10, 42, 320, 42, GREEN);
+  tft.println("Satori");
+  updateCurrentTime();
+  updateBinName();
+  tft.drawLine(10, 42, 480, 42, GREEN);
 
   // Labels
   tft.setTextSize(2);
@@ -210,233 +277,36 @@ void drawMainScreen()
   tft.setCursor(125, 50);
   tft.println("Time(hms)");
   tft.setCursor(125, 140);
-  tft.println("Mix/day");
+  tft.println("Interval(h)");
   tft.setCursor(125, 98);
   tft.setTextColor(CYAN);
-  tft.println("Temp(m)"); // Time to next Punch
-
-  // Incrementors
-  tft.setTextSize(3);
-  tft.setTextColor(GREEN); // UP
-  tft.setCursor(80, 160);  // Temp UP
-  tft.println("+");
-  tft.setCursor(190, 160); // Interval UP
-  tft.println("+");
-
-  tft.setTextColor(RED);  // DOWN
-  tft.setCursor(80, 200); // Temp DOWN
-  tft.println("-");
-  tft.setCursor(190, 200); // Interval Down
-  tft.println("-");
+  tft.println("Temp(m)"); // Time since last punch
 
   // Data
   tft.setTextColor(WHITE);
   tft.setTextSize(3);
   updateTemp();
   tft.setCursor(20, 175);
-  tft.println(TempSetPoint);
+  tft.println(TempSetPoint[Phase]);
   updateInterval();
   UpdateSetInterval();
   tft.setTextSize(2);
   tft.setTextColor(GREENYELLOW);
-  tft.setCursor(0, 222);
+  tft.setCursor(15, 245);
   tft.println("Last Punch Reason: ");
   tft.setTextColor(RED);
-  tft.setCursor(245, 222);
+  tft.setCursor(250, 245);
   tft.println(s_PunchReason);
 
   // BUTTONS
-  renderStateButton(ButtonState, 280, 75, AutoCycleEnabled,
-                    "Pause", "Run", WHITE, RED, BLACK, GREEN);
+  renderSizedStateButton(ButtonState, 420, 70, 110, 40, AutoCycleEnabled,
+                    "Running", "Stopped", BLACK, RED, BLACK, GREEN);
 
-  drawUiButton(ButtonPunch, 280, 135, WHITE, WHITE, BLUE, "Cycle", 2);
-  drawUiButton(ButtonInfo, 280, 195, WHITE, WHITE, BLUE, "Status", 2);
-  ButtonProfile.initButton(&tft, 400, 300, 120, 50, WHITE, NAVY, WHITE,
-                           (char *)ProfileNames[Phase], 2);
-  ButtonProfile.drawButton(false);
+  drawSizedUiButton(ButtonPunch, 420, 140, 110, 40, WHITE, BLACK, BLUE, "Cycle", 2);
+  drawSizedUiButton(ButtonInfo, 420, 210, 110, 40, WHITE, PURPLE, WHITE, "Shake", 2);
+  drawProfileButtons();
   updateActuatorState();
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void drawManualScreen()
-{ // Manual Punch Screen
-  touchActive = false;
-  tft.fillScreen(BLACK);
-  drawhomeicon();
-  tft.setCursor(5, 10);
-  tft.setTextColor(RED);
-  tft.setTextSize(3);
-  tft.println("Cycle Punches");
-  // DIVIDER LINES
-  tft.drawLine(10, 42, 320, 42, GREEN); // Title
-
-  // tft.drawLine(215, 42, 215, 230, GREEN);  //Vertical Center
-
-  tft.setTextSize(2);
-  tft.setTextColor(CYAN);
-  tft.setCursor(15, 50);
-  tft.println("Temp(F)");
-  tft.setTextColor(WHITE);
-  tft.setTextSize(3);
-  updateTemp();
-
-  renderStateButton(ButtonCycle, 280, 75, ManualCycleActive,
-                    "Stop", "Run", WHITE, RED, BLACK, GREEN);
-
-  static char labelBuffer[5];
-  sprintf(labelBuffer, "%d", CycleValue);
-
-  drawUiButton(ButtonCount, 280, 135, WHITE, WHITE, BLUE, labelBuffer, 2);
-  drawUiButton(ButtonShake, 280, 195, WHITE, BLACK, PURPLE, "Shake", 2);
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void drawInfoScreen()
-{ // Running status screen
-  touchActive = false;
-  tft.fillScreen(BLACK);
-  drawhomeicon();
-  // TITLE
-  tft.setCursor(15, 10);
-  tft.setTextColor(RED);
-  tft.setTextSize(3);
-  tft.println("Status");
-  // DIVIDERS LINES
-  tft.drawLine(10, 42, 320, 42, GREEN); // Title
-  tft.drawLine(115, 45, 115, 240, GREEN);
-
-  // TEMP
-  tft.setTextSize(2);
-  tft.setTextColor(CYAN);
-  // TITLES
-  tft.setCursor(5, 50);
-  tft.println("Temp (F)");
-
-  tft.setCursor(5, 110);
-  tft.println("Temp Min");
-
-  tft.setCursor(5, 180);
-  tft.println("Temp Max");
-
-  tft.setCursor(125, 50);
-  tft.println("Cycles");
-
-  tft.setCursor(125, 110);
-  tft.println("Uptime");
-
-  tft.setCursor(125, 180);
-  tft.println("Start Delay (m)");
-
-  // VALUES
-  tft.setTextColor(WHITE);
-  tft.setTextSize(3);
-  tft.setCursor(20, 75);
-  tft.println(TempAct, 1);
-
-  tft.setCursor(20, 130);
-  tft.println(TMin, 1);
-
-  tft.setCursor(20, 200);
-  tft.println(TMax, 1);
-
-  tft.setCursor(125, 70);
-  tft.println(Cycles);
-
-  Uptime();
-  tft.setCursor(125, 130);
-  tft.println(s_UpTime);
-
-  Uptime();
-  tft.setCursor(125, 130);
-  tft.println(s_UpTime);
-
-  tft.setCursor(170, 200);
-  tft.println(StartOffset[_days]);
-
-  // Reduce Interval Down
-  tft.setTextSize(3);
-  tft.setTextColor(RED);
-  tft.setCursor(120, 200);
-  tft.println("-");
-
-  // Increase Interval Up
-  tft.setTextColor(GREEN);
-  tft.setCursor(250, 200);
-  tft.println("+");
-
-  // BUTTONS
-  drawUiButton(ButtonReset, 280, 75, WHITE, WHITE, RED, "Reset", 2);
-  drawUiButton(ButtonConfig, 280, 135, WHITE, WHITE, BLUE, "Config", 2);
-  InfoAge = millis();
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void drawConfigScreen()
-{ // Persistent config settings
-  touchActive = false;
-  tft.fillScreen(BLACK);
-  drawhomeicon();
-  // TITLE
-  tft.setTextSize(3);
-  tft.setTextColor(RED);
-  tft.setCursor(10, 10);
-  tft.println("Plunge Config");
-  // DIVIDERS LINES
-  tft.drawLine(0, 42, 320, 42, GREEN); // Title
-
-  // Increment selectors
-  //  UP
-  tft.setTextColor(GREEN);
-  tft.setCursor(70, 80); // Speed Down - Increase
-  tft.println("+");
-  tft.setCursor(230, 80); // Time Cycles Increase
-  tft.println("+");
-  tft.setCursor(70, 177); // Temp Dwell Increase
-  tft.println("+");
-  tft.setCursor(230, 177); // Temp Cycles Increase
-  tft.println("+");
-
-  // DOWN
-  tft.setTextColor(RED);
-  tft.setCursor(70, 115); // Speed Down - Decrease
-  tft.println("-");
-  tft.setCursor(230, 115); // Time Cycles Decrease
-  tft.println("-");
-  tft.setCursor(70, 207); // Temp Dwell Decrease
-  tft.println("-");
-  tft.setCursor(230, 207); // Temp Cycles Decrease
-  tft.println("-");
-
-  // Labels
-  tft.setTextSize(2);
-  tft.setTextColor(CYAN);
-  tft.setCursor(10, 50);
-  tft.println("Plunge Time");
-  tft.setCursor(10, 66);
-  tft.println("Down (s)");
-  tft.setCursor(10, 150);
-  tft.println("Temp Delay");
-  tft.setCursor(10, 166);
-  tft.println("(min)");
-  tft.setCursor(185, 50);
-  tft.println("Cycles/Time");
-  tft.setCursor(185, 150);
-  tft.println("Cycles/Temp");
-
-  // VALUES
-  tft.setTextColor(WHITE);
-  tft.setTextSize(3);
-
-  tft.setCursor(15, 95);
-  tft.println(StrokeDownTime);
-  tft.setCursor(15, 190);
-  tft.println(SetTempDwellTime);
-  tft.setCursor(180, 95);
-  tft.println(SetTimeRep_UI);
-  tft.setCursor(180, 190);
-  tft.println(SetTempRep_UI);
-
-  InfoAge = millis(); // Reset screen timeout counter
+  updateShakeButton();
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -444,69 +314,41 @@ void ReadScreen()
 {
   if (!ScreenTouched())
     return;
-  InfoAge = millis();
 
   handleTempAdjust();
-  handleIntervalAdjust();
   handleRunStop();
   handleManualCycle();
   handleInfoPage();
-  handleManualCycleActions();
-  handleStatusReset();
-  handleOffsetAdjust();
-  handleConfigAdjustments();
-  handleHomeIcon();
   handleProfileButton();
 }
 
 /*END----------------------------------------------------------------------------------------------*/
 
-/* Screen Handlers*/
 void handleTempAdjust()
 {
-  if (isPageTouchRect(1, px, py, {60, 120, 150, 240}))
+  if (pointInRect(px, py, {60, 120, 150, 240}))
   {
-    if (py <= 200 && TempSetPoint < 120)
+    if (py <= 200 && TempSetPoint[Phase] < 120)
     {
-      TempSetPoint++;
+      TempSetPoint[Phase]++;
     }
-    else if (py > 200 && TempSetPoint > 50)
+    else if (py > 200 && TempSetPoint[Phase] > 50)
     {
-      TempSetPoint--;
+      TempSetPoint[Phase]--;
     }
-    preferences.putInt("tempSetPoint", TempSetPoint);
+    TempSetPoint[Phase] = constrain(TempSetPoint[Phase], 50, 120);
+    preferences.putBytes("tempSetPoint", TempSetPoint, 4 * sizeof(TempSetPoint[0]));
     tft.fillRect(20, 170, 60, 40, BLACK);
     tft.setTextSize(3);
     tft.setCursor(20, 175);
-    tft.println(TempSetPoint);
-  }
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void handleIntervalAdjust()
-{
-  if (isPageTouchRect(1, px, py, {150, 120, 220, 240}))
-  {
-    if (py <= 200 && Index < 7)
-    {
-      Index++;
-    }
-    else if (py > 200 && Index > 0)
-    {
-      Index--;
-    }
-    preferences.putUChar("intervalIndex", Index);
-    IntervalSet = _IntervalSet[Index];
-    Interval = 1440 / IntervalSet + _days * 5;
-    UpdateSetInterval();
-    updateInterval();
+    tft.println(TempSetPoint[Phase]);
   }
 }
 /*END----------------------------------------------------------------------------------------------*/
 
 void handleRunStop()
 {
-  if (isPageButtonHit(1, ButtonState, px, py))
+  if (ButtonState.contains(px, py))
   {
     AutoCycleEnabled = !AutoCycleEnabled;
     preferences.putBool("autoCycle", AutoCycleEnabled);
@@ -514,85 +356,31 @@ void handleRunStop()
     {
       AbortPunch();
     }
-    renderStateButton(ButtonState, 280, 75, AutoCycleEnabled,
-                      "Pause", "Run", WHITE, RED, BLACK, GREEN);
+    renderSizedStateButton(ButtonState, 420, 70, 110, 40, AutoCycleEnabled,
+                      "Running", "Stopped", BLACK, RED, BLACK, GREEN);
   }
 }
 /*END----------------------------------------------------------------------------------------------*/
 
 void handleManualCycle()
 {
-  UiButton *button = nullptr;
-  if (CurrentPage == 1)
-    button = &ButtonPunch;
-  else if (CurrentPage == 2)
-    button = &ButtonConfig;
-  else if (CurrentPage == 3)
-    button = &ButtonCount;
-
-  if (button != nullptr && button->contains(px, py))
+  if (ButtonPunch.contains(px, py) && !PunchActive)
   {
-    switch (CurrentPage)
-    {
-    case 1:
-      CurrentPage = 3;
-      drawManualScreen();
-      break;
-    case 2:
-      CurrentPage = 4;
-      drawConfigScreen();
-      break;
-    case 3:
-      CycleIndex = (CycleIndex + 1) % 4;
-      CycleValue = cycleValues[CycleIndex];
-      static char labelBuffer[5];
-      sprintf(labelBuffer, "%d", CycleValue);
-      drawUiButton(ButtonCount, 280, 135, WHITE, WHITE, BLUE, labelBuffer, 2);
-      break;
-    }
+    ManualCycleActive = true;
+    s_PunchReason = "Manual";
+    SetPunchReps = CycleValue;
+    completedCycles = 1;
+    ManualCycleCompletionHandled = false;
+    StartPunch();
   }
 }
 /*END----------------------------------------------------------------------------------------------*/
 
 void handleInfoPage()
 {
-  if (isPageButtonHit(1, ButtonInfo, px, py))
+  if (ButtonInfo.contains(px, py))
   {
-    CurrentPage = 2;
-    drawInfoScreen();
-  }
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void handleManualCycleActions()
-{
-  if (CurrentPage == 3)
-  {
-    if (ButtonCycle.contains(px, py))
-    {
-      if (!ManualCycleActive)
-      {
-        if (PunchActive)
-          return;
-
-        ManualCycleActive = true;
-        renderStateButton(ButtonCycle, 280, 75, true,
-                          "Stop", "Run", WHITE, RED, BLACK, GREEN);
-        s_PunchReason = "Manual";
-        SetPunchReps = CycleValue;
-        completedCycles = 1;
-        ManualCycleCompletionHandled = false;
-        StartPunch();
-      }
-      else
-      {
-        ManualCycleActive = false;
-        AbortPunch();
-        renderStateButton(ButtonCycle, 280, 75, false,
-                          "Stop", "Run", WHITE, RED, BLACK, GREEN);
-      }
-    }
-    if (ButtonShake.contains(px, py) && !PunchActive)
+    if (!PunchActive)
     {
       StartShake();
     }
@@ -600,209 +388,78 @@ void handleManualCycleActions()
 }
 /*END----------------------------------------------------------------------------------------------*/
 
-void handleStatusReset()
-{
-  if (isPageButtonHit(2, ButtonReset, px, py))
-  {
-    TMax = 0;
-    TMin = 99;
-    Cycles = 0;
-    preferences.putInt("cycles", Cycles);
-    preferences.putBool("powerRecovery", true);
-    AbortPunch();
-    drawInfoScreen();
-  }
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void handleOffsetAdjust()
-{
-  if (isPageTouchRect(2, px, py, {100, 150, 270, 240}))
-  {
-    if (px < 180)
-    {
-      _days = (_days == 0) ? 12 : _days - 1;
-    }
-    else
-    {
-      _days = (_days == 12) ? 0 : _days + 1;
-    }
-    preferences.putUChar("startDelay", _days);
-    tft.fillRect(170, 197, 45, 30, BLACK);
-    tft.setTextSize(3);
-    tft.setTextColor(WHITE);
-    tft.setCursor(170, 200);
-    tft.println(StartOffset[_days]);
-  }
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void handleConfigAdjustments()
-{
-  if (CurrentPage != 4)
-    return;
-
-  // Stroke Down Time
-  if (pointInRect(px, py, {20, 30, 180, 160}))
-  {
-    if (py < 100 && StrokeDownTime < 90)
-      StrokeDownTime += 5;
-    else if (py >= 100 && StrokeDownTime > 5)
-      StrokeDownTime -= 5;
-    preferences.putUChar("strokeDown", StrokeDownTime);
-    tft.fillRect(10, 90, 40, 35, BLACK);
-    tft.setTextSize(3);
-    tft.setCursor(15, 95);
-    tft.println(StrokeDownTime);
-  }
-  /*END----------------------------------------------------------------------------------------------*/
-
-  // Time Reps
-  if (pointInRect(px, py, {180, 30, 280, 160}))
-  {
-    if (py < 100 && SetTimeRep_UI < 10)
-      SetTimeRep_UI++;
-    else if (py >= 100 && SetTimeRep_UI > 1)
-      SetTimeRep_UI--;
-    preferences.putUChar("timeReps", SetTimeRep_UI);
-    tft.fillRect(170, 90, 60, 40, BLACK);
-    tft.setTextSize(3);
-    tft.setCursor(180, 95);
-    tft.println(SetTimeRep_UI);
-  }
-  /*END----------------------------------------------------------------------------------------------*/
-
-  // Temp Reps
-  if (pointInRect(px, py, {180, 170, 280, 235}))
-  {
-    if (py < 200 && SetTempRep_UI < 10)
-      SetTempRep_UI++;
-    else if (py >= 200 && SetTempRep_UI > 1)
-      SetTempRep_UI--;
-    preferences.putUChar("tempReps", SetTempRep_UI);
-    tft.fillRect(170, 180, 60, 40, BLACK);
-    tft.setTextSize(3);
-    tft.setCursor(180, 190);
-    tft.println(SetTempRep_UI);
-  }
-  /*END----------------------------------------------------------------------------------------------*/
-
-  // Temp Dwell
-  if (pointInRect(px, py, {20, 170, 180, 235}))
-  {
-    if (py < 200 && SetTempDwellTime < 240)
-      SetTempDwellTime += 5;
-    else if (py >= 200 && SetTempDwellTime > 0)
-      SetTempDwellTime -= 5;
-    preferences.putInt("tempDwell", SetTempDwellTime);
-    tft.fillRect(15, 190, 60, 40, BLACK);
-    tft.setTextSize(3);
-    tft.setCursor(15, 190);
-    tft.println(SetTempDwellTime);
-  }
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void handleHomeIcon()
-{
-  if (CurrentPage != 1 && ButtonReturn.contains(px, py))
-  {
-    CurrentPage = 1;
-    drawMainScreen();
-  }
-}
-/*END----------------------------------------------------------------------------------------------*/
-
 void handleProfileButton()
 {
-  if (!isPageButtonHit(1, ButtonProfile, px, py))
-    return;
+  for (byte profile = 0; profile < 4; profile++)
+  {
+    if (!ProfileButtons[profile].contains(px, py))
+      continue;
 
-  Phase = (Phase + 1) % 4;
-  preferences.putUChar("phase", Phase);
-  publishBlynkState();
-  ButtonProfile.initButton(&tft, 400, 300, 120, 50, WHITE, NAVY, WHITE,
-                           (char *)ProfileNames[Phase], 2);
-  ButtonProfile.drawButton(false);
-  Serial.print("Profile Pressed: ");
-  Serial.println(ProfileNames[Phase]);
+    Phase = profile;
+    preferences.putUChar("phase", Phase);
+    applyPhaseSettings();
+    publishBlynkState();
+    drawProfileButtons();
+    Serial.print("Profile selected: ");
+    Serial.println(ProfileNames[Phase]);
+    return;
+  }
 }
 /*END----------------------------------------------------------------------------------------------*/
 
 void updateTemp()
 { // Display update of Temperature
-  if (CurrentPage != 4)
-  {
-    GetTemp();
-    tft.fillRect(20, 65, 70, 40, BLACK);
-    tft.setTextSize(3);
-    tft.setTextColor(WHITE);
-    tft.setCursor(20, 75);
-    tft.println(TempAct, 1);
-  }
-  if (CurrentPage == 3)
-  {
-    if (ManualCycleActive)
-    {
-      tft.setTextSize(2);
-      tft.setTextColor(WHITE);
-      tft.setCursor(15, 140);
-      tft.print("Cycles ");
-      tft.fillRect(90, 140, 20, 20, BLACK);
-      tft.print(completedCycles);
-      tft.print(" of ");
-      tft.fillRect(160, 140, 20, 20, BLACK);
-      tft.print(SetPunchReps);
-    }
-    else
-    {
-      tft.fillRect(15, 138, 180, 20, BLACK);
-    }
-  }
-  if (CurrentPage == 2)
-  {
-    tft.setTextSize(3);
-    tft.setTextColor(WHITE);
-
-    if (TMin != lastStatusTMin)
-    {
-      lastStatusTMin = TMin;
-      tft.fillRect(20, 125, 70, 35, BLACK);
-      tft.setCursor(20, 130);
-      tft.println(TMin, 1);
-    }
-
-    if (TMax != lastStatusTMax)
-    {
-      lastStatusTMax = TMax;
-      tft.fillRect(20, 195, 70, 35, BLACK);
-      tft.setCursor(20, 200);
-      tft.println(TMax, 1);
-    }
-  }
+  GetTemp();
+  tft.fillRect(20, 65, 70, 40, BLACK);
+  tft.setTextSize(3);
+  tft.setTextColor(WHITE);
+  tft.setCursor(20, 75);
+  tft.println(TempAct, 1);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
 void updateActuatorState()
 {
-  if (CurrentPage != 1)
-    return;
-
-  tft.fillRect(275, 0, 45, 40, BLACK);
+  static char lastStateLabel[5] = "";
+  char stateLabel[5] = "";
 
   const PunchState state = actuators.getState();
-  if (state != PUNCH_DOWN && state != PUNCH_UP)
+  if (state == PUNCH_DOWN || state == PUNCH_UP)
+  {
+    const char direction = state == PUNCH_DOWN ? 'v' : '^';
+    snprintf(stateLabel, sizeof(stateLabel), "%d%c",
+             actuators.getCurrentActuator() + 1, direction);
+  }
+
+  if (strcmp(lastStateLabel, stateLabel) == 0)
     return;
 
-  char stateLabel[5];
-  const char direction = state == PUNCH_DOWN ? 'v' : '^';
-  snprintf(stateLabel, sizeof(stateLabel), "%d%c",
-           actuators.getCurrentActuator() + 1, direction);
+  tft.fillRect(360, 0, 120, 40, BLACK);
+  strcpy(lastStateLabel, stateLabel);
+
+  if (stateLabel[0] == '\0')
+    return;
 
   tft.setTextColor(WHITE);
   tft.setTextSize(3);
-  tft.setCursor(280, 8);
+  tft.setCursor(365, 8);
   tft.print(stateLabel);
+}
+
+void updateShakeButton()
+{
+  static bool lastShakeState = false;
+  const PunchState state = actuators.getState();
+  const bool shaking = state == PUNCH_SHAKE_WAIT ||
+                       state == PUNCH_SHAKE_DOWN ||
+                       state == PUNCH_SHAKE_UP;
+
+  if (shaking == lastShakeState)
+    return;
+
+  lastShakeState = shaking;
+  drawSizedUiButton(ButtonInfo, 420, 210, 110, 40, WHITE, PURPLE, WHITE,
+                    shaking ? "Shaking" : "Shake", 2);
 }
 
 void updateInterval()
@@ -841,24 +498,8 @@ void UpdateSetInterval()
   tft.setTextSize(3);
   tft.setCursor(125, 175);
   tft.fillRect(110, 170, 60, 40, BLACK); // Clear per day
-  tft.println(_IntervalSet[Index]);
+  tft.println(CycleFrequency[Phase]);
   updateInterval();
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void drawhomeicon()
-{ // draws a white home icon
-  ButtonReturn.initButton(&tft, 300, 20, 40, 40, BLACK, BLACK, WHITE, (char *)"", 1);
-  tft.drawLine(280, 19, 299, 0, WHITE);
-  tft.drawLine(300, 0, 304, 4, WHITE);
-  tft.drawLine(304, 3, 304, 0, WHITE);
-  tft.drawLine(305, 0, 307, 0, WHITE);
-  tft.drawLine(308, 0, 308, 8, WHITE);
-  tft.drawLine(309, 9, 319, 19, WHITE);
-  tft.drawLine(281, 19, 283, 19, WHITE);
-  tft.drawLine(316, 19, 318, 19, WHITE);
-  tft.drawRect(284, 19, 32, 21, WHITE);
-  tft.drawRect(295, 25, 10, 15, WHITE);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -867,7 +508,7 @@ bool ScreenTouched()
   static bool lastReportedTouchState = false;
   uint16_t touchX = 0;
   uint16_t touchY = 0;
-  const bool isTouched = tft.getTouch(&touchX, &touchY);
+  const bool isTouched = tft.getTouch(&touchX, &touchY, 100);
   px = touchX;
   py = tft.height() - 1 - touchY;
   pz = isTouched ? 1 : 0;
@@ -896,6 +537,13 @@ bool ScreenTouched()
     Serial.print(px);
     Serial.print(", y=");
     Serial.println(py);
+    Serial.print(" state=");
+    Serial.print(ButtonState.contains(px, py));
+    Serial.print(" punch=");
+    Serial.print(ButtonPunch.contains(px, py));
+    Serial.print(" info=");
+    Serial.print(ButtonInfo.contains(px, py));
+    Serial.println();
     return true; // New touch event registered
   }
 
