@@ -57,7 +57,6 @@ void updateTemp();
 void updateBinName();
 void updateActuatorState();
 void updateShakeButton();
-void UpdateSetInterval();
 bool ScreenTouched();
 
 // Touch Handlers

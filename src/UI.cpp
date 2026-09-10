@@ -35,20 +35,19 @@ void updateCurrentTime()
     strftime(timeText, sizeof(timeText), "%H:%M:%S", &timeInfo);
   }
 
-  tft.fillRect(250, 4, 100, 31, BLACK);
+  tft.fillRect(360, 4, 120, 31, BLACK);
   tft.setTextColor(WHITE, BLACK);
   tft.setTextSize(2);
-  tft.setCursor(250, 14);
+  tft.setCursor(365, 14);
   tft.print(timeText);
 }
 
 void updateBinName()
 {
-  tft.fillRect(125, 4, 120, 31, BLACK);
+  tft.fillRect(115, 4, 130, 31, BLACK);
   tft.setTextColor(CYAN, BLACK);
   tft.setTextSize(3);
-  const int16_t nameWidth = tft.textWidth(BinName);
-  tft.setCursor(max((int16_t)125, (int16_t)(245 - nameWidth)), 8);
+  tft.setCursor(135, 10);
   tft.print(BinName);
 }
 
@@ -169,6 +168,12 @@ static void drawSizedUiButton(UiButton &button, int x, int y, uint16_t width,
   button.drawButton(false);
 }
 
+static void printCentered(const String &value, int16_t centerX, int16_t y)
+{
+  tft.setCursor(centerX - tft.textWidth(value) / 2, y);
+  tft.print(value);
+}
+
 static void renderStateButton(UiButton &button, int x, int y,
                               bool active, const char *activeLabel,
                               const char *inactiveLabel, uint16_t activeFill,
@@ -269,40 +274,46 @@ void drawMainScreen()
   tft.setTextSize(2);
   tft.setTextColor(CYAN);
   tft.setCursor(15, 50);
-  tft.println("Temp(F)");
-  tft.setCursor(15, 125);
-  tft.println("Set");
-  tft.setCursor(15, 140);
-  tft.println("Temp(F)");
-  tft.setCursor(125, 50);
-  tft.println("Time(hms)");
-  tft.setCursor(125, 140);
-  tft.println("Interval(h)");
-  tft.setCursor(125, 98);
-  tft.setTextColor(CYAN);
-  tft.println("Temp(m)"); // Time since last punch
+  tft.println("Time");
+  tft.setCursor(145, 50);
+  tft.println("Interval");
+  tft.setCursor(285, 50);
+  tft.println("Last");
+  tft.setCursor(15, 68);
+  tft.println("(hms)");
+  tft.setCursor(145, 68);
+  tft.println("(h)");
+  tft.setCursor(285, 68);
+  tft.println("(m)");
+  tft.setCursor(15, 165);
+  tft.println("Temp");
+  tft.setCursor(145, 165);
+  tft.println("SetTemp");
+  tft.setCursor(285, 165);
+  tft.println("Max Temp");
+  tft.setCursor(15, 183);
+  tft.println("(F)");
+  tft.setCursor(145, 183);
+  tft.println("(F)");
+  tft.setCursor(285, 183);
+  tft.println("(F)");
 
   // Data
   tft.setTextColor(WHITE);
   tft.setTextSize(3);
   updateTemp();
-  tft.setCursor(20, 175);
-  tft.println(TempSetPoint[Phase]);
+  tft.fillRect(135, 208, 110, 40, BLACK);
+  printCentered(String(TempSetPoint[Phase]), 190, 213);
+  tft.fillRect(285, 208, 70, 40, BLACK);
+  tft.setCursor(295, 213);
+  tft.println(TMax, 1);
   updateInterval();
-  UpdateSetInterval();
-  tft.setTextSize(2);
-  tft.setTextColor(GREENYELLOW);
-  tft.setCursor(15, 245);
-  tft.println("Last Punch Reason: ");
-  tft.setTextColor(RED);
-  tft.setCursor(250, 245);
-  tft.println(s_PunchReason);
-
+  
   // BUTTONS
   renderSizedStateButton(ButtonState, 420, 70, 110, 40, AutoCycleEnabled,
                     "Running", "Stopped", BLACK, RED, BLACK, GREEN);
 
-  drawSizedUiButton(ButtonPunch, 420, 140, 110, 40, WHITE, BLACK, BLUE, "Cycle", 2);
+  drawSizedUiButton(ButtonPunch, 420, 140, 110, 40, WHITE, BLUE, WHITE, "Cycle", 2);
   drawSizedUiButton(ButtonInfo, 420, 210, 110, 40, WHITE, PURPLE, WHITE, "Shake", 2);
   drawProfileButtons();
   updateActuatorState();
@@ -338,10 +349,9 @@ void handleTempAdjust()
     }
     TempSetPoint[Phase] = constrain(TempSetPoint[Phase], 50, 120);
     preferences.putBytes("tempSetPoint", TempSetPoint, 4 * sizeof(TempSetPoint[0]));
-    tft.fillRect(20, 170, 60, 40, BLACK);
+    tft.fillRect(135, 208, 110, 40, BLACK);
     tft.setTextSize(3);
-    tft.setCursor(20, 175);
-    tft.println(TempSetPoint[Phase]);
+    printCentered(String(TempSetPoint[Phase]), 190, 213);
   }
 }
 /*END----------------------------------------------------------------------------------------------*/
@@ -410,11 +420,14 @@ void handleProfileButton()
 void updateTemp()
 { // Display update of Temperature
   GetTemp();
-  tft.fillRect(20, 65, 70, 40, BLACK);
+  tft.fillRect(15, 208, 80, 40, BLACK);
   tft.setTextSize(3);
   tft.setTextColor(WHITE);
-  tft.setCursor(20, 75);
+  tft.setCursor(15, 213);
   tft.println(TempAct, 1);
+  tft.fillRect(285, 208, 70, 40, BLACK);
+  tft.setCursor(295, 213);
+  tft.println(TMax, 1);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -434,7 +447,7 @@ void updateActuatorState()
   if (strcmp(lastStateLabel, stateLabel) == 0)
     return;
 
-  tft.fillRect(360, 0, 120, 40, BLACK);
+  tft.fillRect(250, 0, 100, 40, BLACK);
   strcpy(lastStateLabel, stateLabel);
 
   if (stateLabel[0] == '\0')
@@ -442,7 +455,7 @@ void updateActuatorState()
 
   tft.setTextColor(WHITE);
   tft.setTextSize(3);
-  tft.setCursor(365, 8);
+  tft.setCursor(255, 8);
   tft.print(stateLabel);
 }
 
@@ -480,26 +493,17 @@ void updateInterval()
     _sec = "0" + _sec;
   }
   s_NextTime = _hour + ":" + _min + ":" + _sec;
-  tft.setTextSize(2);
-  tft.fillRect(125, 68, 100, 25, BLACK);
-  tft.setTextColor(WHITE);
-  tft.setCursor(125, 75);
-  tft.println(s_NextTime); // Time to next Punch
-  tft.setTextSize(2);
-  tft.fillRect(125, 115, 60, 20, BLACK);
-  tft.setTextColor(WHITE);
-  tft.setCursor(125, 117);
-  tft.println(TempDwellTime); // Time to next Punch
-}
-/*END----------------------------------------------------------------------------------------------*/
-
-void UpdateSetInterval()
-{
   tft.setTextSize(3);
-  tft.setCursor(125, 175);
-  tft.fillRect(110, 170, 60, 40, BLACK); // Clear per day
-  tft.println(CycleFrequency[Phase]);
-  updateInterval();
+  tft.fillRect(15, 95, 130, 35, BLACK);
+  tft.setTextColor(WHITE);
+  tft.setCursor(15, 100);
+  tft.println(s_NextTime); // Time to next Punch
+  tft.fillRect(295, 95, 60, 35, BLACK);
+  tft.setTextColor(WHITE);
+  tft.setCursor(295, 100);
+  tft.println(TempDwellTime);
+  tft.fillRect(145, 95, 100, 35, BLACK);
+  printCentered(String(CycleFrequency[Phase]), 190, 100);
 }
 /*END----------------------------------------------------------------------------------------------*/
 

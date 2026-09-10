@@ -5,7 +5,7 @@ extern unsigned long lastPunchCompleteTime;
 extern Preferences preferences;
 
 // --- FIRMWARE DETAILS ---
-#define Version "(c)2023-26 PIO-26-09-07"
+#define Version "(c)2023-26 PIO-26-09-09"
 #define Concept0 "Concept, Design & Build"
 #define Concept1 "Tom Moller"
 #define Concept2 "Dave Williams"
