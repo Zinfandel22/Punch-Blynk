@@ -3,7 +3,6 @@
 // External variables from main.cpp
 extern byte PinOutputs[4];
 extern byte StrokeDownTime;
-extern byte StrokeUpTime;
 extern unsigned long ShakeDelay;
 extern unsigned long ShakeDepth_ms;
 extern int MaxShakeCycles;
@@ -12,6 +11,8 @@ extern bool PunchActive;
 
 // Extern reference to update the global maintained in main.cpp
 extern unsigned long lastPunchCompleteTime; 
+
+static constexpr unsigned long StrokeUpTimeMs = 30000;
 
 void Actuators::begin() {
     for (byte i = 0; i < 4; i++) {
@@ -39,7 +40,7 @@ void Actuators::update() {
             break;
 
         case PUNCH_UP:
-            if (now - upStartTime >= (unsigned long)StrokeUpTime * 1000) {
+            if (now - upStartTime >= StrokeUpTimeMs) {
                 currentPunchActuator++;
                 if (currentPunchActuator < 4) {
                     punchStartTime = now;

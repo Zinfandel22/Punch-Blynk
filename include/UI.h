@@ -29,17 +29,17 @@ private:
 extern float TempAct, TMax, TMin, Interval;
 extern int TempSetPoint[], Cycles, SetTempDwellTime, TempDwellTime, completedCycles;
 extern byte StrokeDownTime;
-extern byte CycleFrequency[];
+extern byte PhaseIntervalHours[];
 extern byte SetTimeRep_UI, SetTempRep_UI, SetPunchReps;
 extern String s_PunchReason, BinName;
 extern bool AutoCycleEnabled, PunchActive, ManualCycleActive;
 extern bool ManualCycleCompletionHandled;
-extern int cycleValues[];
-extern int CycleIndex, CycleValue;
+extern int CycleValue;
 extern byte Phase;
 extern TFT_eSPI tft;
 void publishBlynkState();
 void applyPhaseSettings(bool resetTimer = true);
+void applyPhaseSettingsPreservingTimer();
 
 // --- EXTERNAL FUNCTIONS (Defined elsewhere, called by UI) ---
 float GetTemp();
@@ -56,7 +56,12 @@ void updateInterval();
 void updateTemp();
 void updateBinName();
 void updateActuatorState();
+String actuatorStateLabel();
+String actuatorCloudStateLabel();
 void updateShakeButton();
+void updateCycleButton();
+void showCycleButtonCount(int count);
+void resetCycleButtonDisplay();
 bool ScreenTouched();
 
 // Touch Handlers

@@ -23,6 +23,8 @@ unsigned long lastTouchTime = 0;
 bool touchActive = false;
 unsigned long touchDelay = 250;
 static Preferences touchPreferences;
+static int cycleButtonDisplayedCount = 0;
+static unsigned long cycleButtonDisplayUntil = 0;
 
 void updateCurrentTime()
 {
@@ -274,7 +276,7 @@ void drawMainScreen()
   tft.setTextSize(2);
   tft.setTextColor(CYAN);
   tft.setCursor(15, 50);
-  tft.println("Time");
+  tft.println("Timer");
   tft.setCursor(145, 50);
   tft.println("Interval");
   tft.setCursor(285, 50);
@@ -288,7 +290,7 @@ void drawMainScreen()
   tft.setCursor(15, 165);
   tft.println("Temp");
   tft.setCursor(145, 165);
-  tft.println("SetTemp");
+  tft.println("Set Temp");
   tft.setCursor(285, 165);
   tft.println("Max Temp");
   tft.setCursor(15, 183);
@@ -318,6 +320,7 @@ void drawMainScreen()
   drawProfileButtons();
   updateActuatorState();
   updateShakeButton();
+  updateCycleButton();
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -374,14 +377,23 @@ void handleRunStop()
 
 void handleManualCycle()
 {
-  if (ButtonPunch.contains(px, py) && !PunchActive)
+  if (ButtonPunch.contains(px, py))
   {
-    ManualCycleActive = true;
-    s_PunchReason = "Manual";
-    SetPunchReps = CycleValue;
-    completedCycles = 1;
-    ManualCycleCompletionHandled = false;
-    StartPunch();
+    if (CycleValue >= 5)
+      return;
+
+    CycleValue++;
+    showCycleButtonCount(CycleValue);
+    if (!PunchActive)
+    {
+      ManualCycleActive = true;
+      s_PunchReason = "Manual";
+      TempDwellTime = 0;
+      preferences.putInt("runDwellTime", TempDwellTime);
+      ManualCycleCompletionHandled = false;
+      StartPunch();
+    }
+    publishBlynkState();
   }
 }
 /*END----------------------------------------------------------------------------------------------*/
@@ -407,9 +419,9 @@ void handleProfileButton()
 
     Phase = profile;
     preferences.putUChar("phase", Phase);
-    applyPhaseSettings();
-    publishBlynkState();
+    applyPhaseSettingsPreservingTimer();
     drawProfileButtons();
+    publishBlynkState();
     Serial.print("Profile selected: ");
     Serial.println(ProfileNames[Phase]);
     return;
@@ -434,15 +446,8 @@ void updateTemp()
 void updateActuatorState()
 {
   static char lastStateLabel[5] = "";
-  char stateLabel[5] = "";
-
-  const PunchState state = actuators.getState();
-  if (state == PUNCH_DOWN || state == PUNCH_UP)
-  {
-    const char direction = state == PUNCH_DOWN ? 'v' : '^';
-    snprintf(stateLabel, sizeof(stateLabel), "%d%c",
-             actuators.getCurrentActuator() + 1, direction);
-  }
+  const String currentStateLabel = actuatorStateLabel();
+  const char *stateLabel = currentStateLabel.c_str();
 
   if (strcmp(lastStateLabel, stateLabel) == 0)
     return;
@@ -459,6 +464,29 @@ void updateActuatorState()
   tft.print(stateLabel);
 }
 
+String actuatorStateLabel()
+{
+  const PunchState state = actuators.getState();
+  if (state != PUNCH_DOWN && state != PUNCH_UP)
+    return String();
+
+  char stateLabel[5];
+  const char direction = state == PUNCH_DOWN ? 'v' : '^';
+  snprintf(stateLabel, sizeof(stateLabel), "%d%c",
+           actuators.getCurrentActuator() + 1, direction);
+  return String(stateLabel);
+}
+
+String actuatorCloudStateLabel()
+{
+  const PunchState state = actuators.getState();
+  if (state != PUNCH_DOWN && state != PUNCH_UP)
+    return String();
+
+  return String(actuators.getCurrentActuator() + 1) +
+         (state == PUNCH_DOWN ? " descending" : " ascending");
+}
+
 void updateShakeButton()
 {
   static bool lastShakeState = false;
@@ -473,6 +501,43 @@ void updateShakeButton()
   lastShakeState = shaking;
   drawSizedUiButton(ButtonInfo, 420, 210, 110, 40, WHITE, PURPLE, WHITE,
                     shaking ? "Shaking" : "Shake", 2);
+}
+
+void showCycleButtonCount(int count)
+{
+  cycleButtonDisplayedCount = count;
+  cycleButtonDisplayUntil = millis() + 1000;
+  drawSizedUiButton(ButtonPunch, 420, 140, 110, 40, WHITE, BLUE, WHITE,
+                    String(cycleButtonDisplayedCount).c_str(), 2);
+}
+
+void updateCycleButton()
+{
+  static String lastLabel;
+  String label;
+
+  if (cycleButtonDisplayUntil != 0 && millis() < cycleButtonDisplayUntil)
+  {
+    label = String(cycleButtonDisplayedCount);
+  }
+  else
+  {
+    cycleButtonDisplayUntil = 0;
+    label = CycleValue > 0 ? "Cycling" : "Cycle";
+  }
+
+  if (label == lastLabel)
+    return;
+
+  lastLabel = label;
+  drawSizedUiButton(ButtonPunch, 420, 140, 110, 40, WHITE, BLUE, WHITE,
+                    label.c_str(), 2);
+}
+
+void resetCycleButtonDisplay()
+{
+  cycleButtonDisplayUntil = 0;
+  updateCycleButton();
 }
 
 void updateInterval()
@@ -503,7 +568,7 @@ void updateInterval()
   tft.setCursor(295, 100);
   tft.println(TempDwellTime);
   tft.fillRect(145, 95, 100, 35, BLACK);
-  printCentered(String(CycleFrequency[Phase]), 190, 100);
+  printCentered(String(PhaseIntervalHours[Phase]), 190, 100);
 }
 /*END----------------------------------------------------------------------------------------------*/
 
@@ -514,7 +579,7 @@ bool ScreenTouched()
   uint16_t touchY = 0;
   const bool isTouched = tft.getTouch(&touchX, &touchY, 100);
   px = touchX;
-  py = tft.height() - 1 - touchY;
+  py = touchY;
   pz = isTouched ? 1 : 0;
 
   if (isTouched && !lastReportedTouchState)

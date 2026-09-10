@@ -1,17 +1,24 @@
-|--include
-|  |--Actuators.h
-|  |--config.h
-|  |--Sensors.h
-|  |--UI.h
-|
-|--src
-|  |--Actuators.cpp
-|  |--Sensors.cpp
-|  |--UI.cpp
-|  |--main.cpp
-|
-|--platformio.ini
-|--src/README
+```text
+include/
+|-- Actuators.h
+|-- BlynkController.h
+|-- BlynkEdgent.h and Edgent support headers
+|-- User_Setup.h
+|-- Sensors.h
+|-- UI.h
+|-- config.h
+|-- secrets.h                 # ignored; Blynk template identity
+
+src/
+|-- Actuators.cpp
+|-- BlynkController.cpp
+|-- Sensors.cpp
+|-- UI.cpp
+|-- main.cpp
+
+platformio.ini
+src/README
+```
 
 # Wine Must Punch Controller
 
@@ -32,18 +39,57 @@ This project automates the wine must cap management process, simulating manual p
 
 ## Program Structure & Modular Architecture
 
-The codebase is built using **PlatformIO** and the Arduino ESP32 framework, structured into isolated modules to separate hardware concerns from core business logic.
+The codebase is built using **PlatformIO** and the Arduino ESP32 framework. Hardware-specific code is kept in modules, while `main.cpp` coordinates runtime state, persistence, Blynk input, and the actuator workflow.
 
 * **`main.cpp`**
 The central entry point and main loop coordinator. It restores persistent controller settings, evaluates time and temperature logic thresholds, and triggers punch sequences. It serves as the bridge between the UI, sensors, actuator modules, and Blynk cloud.
+* **`BlynkController.h` / `BlynkController.cpp`**
+Owns Blynk.Edgent initialization and servicing, virtual-pin handlers, state publishing, telemetry, and Blynk-triggered display refreshes. `BlynkEdgent.h` is included only here to avoid duplicate driver definitions.
 * **`Actuators.h` / `Actuators.cpp`**
 A non-blocking Finite State Machine (FSM) that governs the mechanical punch sequence. It manages the timing for actuator extension, retraction, dwell states, and the multi-cycle post-punch shake routine without relying on `delay()`.
 * **`UI.h` / `UI.cpp`**
-Isolates all display initialization, page drawing routines, TFT_eSPI touch polling, and button event handlers.
+Contains display initialization, touch calibration, main-screen rendering, TFT_eSPI touch polling, and button event handlers.
 * **`Sensors.h` / `Sensors.cpp**`
 Manages OneWire/Dallas temperature polling. It handles sensor initialization, error checking, and tracks minimum/maximum temperature values across power cycles.
 * **`config.h`**
 Contains shared hardware pin definitions, UI colors, and controller constants.
+
+### Hardware Pin Assignments
+
+#### Actuators
+
+| Function | GPIO |
+| --- | ---: |
+| Solenoid 1 | 25 |
+| Solenoid 2 | 14 |
+| Solenoid 3 | 26 |
+| Solenoid 4 | 27 |
+
+The actuator FSM uses a fixed 30-second stroke-up time. Stroke-down time remains phase-specific through V5.
+
+#### Display and Touch
+
+The display is configured in `User_Setup.h` for an ILI9488 using TFT_eSPI in landscape rotation.
+
+| Function | GPIO |
+| --- | ---: |
+| TFT MISO | 19 |
+| TFT MOSI | 23 |
+| TFT SCLK | 18 |
+| TFT CS | 5 |
+| TFT DC | 2 |
+| TFT RESET | 4 |
+| Touch CS | 0 |
+
+Display SPI frequency is 40 MHz and touch SPI frequency is 2.5 MHz. Touch calibration is stored in the `touch` Preferences namespace.
+
+#### Temperature Sensor
+
+| Function | GPIO |
+| --- | ---: |
+| DS18B20 OneWire bus | 23 |
+
+The DS18B20 uses the OneWire bus defined by `ONE_WIRE_BUS` in `config.h`.
 
 ### Runtime Loop Order
 
@@ -59,6 +105,19 @@ Contains shared hardware pin definitions, UI colors, and controller constants.
 
 The UI module owns local touch events, the actuator module owns punch-state transitions, and the sensor module owns temperature polling. Selected runtime values are shared through the declarations in `UI.h` and `Sensors.h` so local controls and Blynk commands update the same active state.
 
+### Blynk Edgent Configuration
+
+Template identity is defined in the ignored `include/secrets.h` file. The current template is:
+
+```cpp
+#define BLYNK_TEMPLATE_ID "TMPL2xisP97GZ"
+#define BLYNK_TEMPLATE_NAME "Punching Matilda"
+```
+
+Wi-Fi credentials and device tokens are provisioned through Blynk.Edgent and must not be committed. For the LOLIN Lite, the provisioning/reset button is GPIO22, active low, and no status LED is configured. `runBlynkController()` calls `BlynkEdgent.run()` continuously from the main loop.
+
+Preferences are authoritative on boot and reconnect. `BLYNK_CONNECTED()` publishes the device's local state; it does not synchronize command values from the cloud. V10 selects the active profile, and V1, V5, V7, V8, V14, and V16 each have four persisted phase-specific values.
+
 ---
 
 ## Blynk Virtual Pins
@@ -73,7 +132,7 @@ The firmware publishes these virtual pins to Blynk for monitoring and accepts li
 | V3 | Output | Punch countdown |
 | V4 | Output | Last punch reason |
 | V5 | Input/output | Stroke-down time |
-| V6 | Input/output | Stroke-up time |
+| V6 | Input/output | Remaining manual plunge cycles, 0-5; live and not persisted |
 | V7 | Input/output | Time-trigger punch repetitions |
 | V8 | Input/output | Temperature-trigger punch repetitions |
 | V9 | Input/output | One-shot touch calibration command |
@@ -85,7 +144,9 @@ The firmware publishes these virtual pins to Blynk for monitoring and accepts li
 | V15 | Output | Maximum recorded temperature |
 | V16 | Input/output | Phase-specific temperature threshold, persisted per V10 phase |
 | V17 | Input/output | Reset command/status |
+| V18 | Output | Total completed plunge cycles |
 | V19 | Input/output | Bin name |
+| V20 | Output | Actuator state: `1v`, `1^`, `2v`, `2^`, etc. |
 
 ---
 
